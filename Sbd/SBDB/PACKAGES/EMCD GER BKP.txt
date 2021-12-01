@@ -1,0 +1,205 @@
+CREATE O REPLACE 
+PACKAGE "EMCD" IS 
+  PROCEDURE APURA_PERIODO (ANO IN VARCHAR2) ;
+  PROCEDURE EMITE_EXTRATO (ANO IN VARCHAR2) ;
+  FUNCTION VALIDAFASE	(SOC IN NUMBER, APUR IN VARCHAR2) RETURN NUMBER;
+  FUNCTION VALIDACERTIFICADO (VALOR IN NUMBER,TOTAL_PONTO IN NUMBER) RETURN NUMBER;
+END;
+/
+
+CREATE O REPLACE 
+PACKAGE BODY "EMCD" AS
+	-- AVISOS QUANTO ÀS RESTRIÇÕES NECESSÁRIAS
+	-- NÃO SE PODE INCLUIR FASE QUE NÃO EXISTAM ANTERIORES
+	-- PERMITIR PROCESSAR SOMENTE FASE ONDE A ANTERIOR JÁ ESTEJA PROCESSADA
+	-------------------------------------------------------------------------------
+	-- ROTINA PARA APURAR A PONTUAÇÃO EM UM ANO INFORMADO
+	-------------------------------------------------------------------------------
+  PROCEDURE APURA_PERIODO	(ANO IN VARCHAR2) AS
+    VDATAFASEANTERIOR DATE;
+    VFASEEXISTENTE VARCHAR2(10) ;
+    VFASE VARCHAR2(4) ;
+    VTOTPONTO NUMBER(5, 2) ;
+  begin
+  
+    if ANO >= TO_NUMBER(2004)  then
+
+      -------------------------------------------------------------------------------
+      -- VERIFICA SE A FASE INFORMADA JÁ FOI APURADA
+      -------------------------------------------------------------------------------
+      select FASE, TOTAL_PONTO, NVL(SBDB.LB.LEXIBEDATA(DATA_APURACAO,'sd'),'NULO') into VFASE, VTOTPONTO, VFASEEXISTENTE FROM SBDB.EMCD_FASE WHERE SBDB.LB.LEXIBEDATA(DATA_INICIO,'yyyy') = ANO;
+
+      -------------------------------------------------------------------------------
+      -- ESTA SELECT DEVE SER ATIVADA CASO A APURAÇÃO SEJA FEITA ANTES DA VIRADA DO ANO E RETORNAR PARA INATIVA APÓS A VIRADA DO ANO
+      -------------------------------------------------------------------------------
+      --Select nvl(to_char(DATA_APURACAO,'dd/mm/yyyy'),'NULO') into FaseExistente FROM SBDB.EMCD_FASE WHERE FASE = Vfase;
+      IF(VFASEEXISTENTE <> 'NULO') THEN
+        RAISE_APPLICATION_ERROR( - 20001, 'A Fase ' || VFASE || ', Já Foi Apurada! Procedimento foi abortado.') ;
+      ELSE
+        begin
+          SELECT NVL(DATA_APURACAO, TO_DATE('31/12/3999', 'dd/mm/yyyy')) INTO VDATAFASEANTERIOR FROM SBDB.EMCD_FASE WHERE TO_NUMBER(FASE) = TO_NUMBER(VFASE) - 1;
+          if VDATAFASEANTERIOR = TO_DATE('31/12/3999', 'dd/mm/yyyy') then
+            RAISE_APPLICATION_ERROR( - 20002, 'Para processar a fase ' || VFASE || ', as fases anteriores devem estar processadas. Procedimento foi abortado.') ;
+          END IF;
+        EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+          VFASEEXISTENTE := '0000';
+        end;
+      end if;
+      
+      -------------------------------------------------------------------------------
+      -- DELETA TODOS OS REGITROS REFERENTE A FASE PARA QUE A APURAÇÃO POSSA SER REALIZADA EVITANDO DUPLICIDADES
+      -------------------------------------------------------------------------------
+      delete from SBDB.EMCD_PONTO_FASE where APURACAO = VFASE;
+      delete from SBDB.EMCD_APURAÇÃO where APURACAO = VFASE;
+
+      FOR CUR IN (SELECT FASE, DATA_INICIO, DATA_FINAL, TOTAL_PONTO	FROM SBDB.EMCD_FASE	WHERE SBDB.LB.LEXIBEDATA(DATA_INICIO,'yyyy') = ANO ORDER BY FASE)
+      LOOP
+      
+        -------------------------------------------------------------------------------
+        -- INCLUI PONTOS
+        -------------------------------------------------------------------------------
+        INSERT INTO SBDB.EMCD_PONTO_FASE (SOCIO_MAT, ATIV_COD, PONTO_COD, APURACAO, SUBFASE)
+        select PONTOS.SÓCIO_MAT,  PONTOS.ATIV_COD, PONTOS.PONTO_COD, CUR.FASE, 
+        TO_CHAR(TO_NUMBER(SBDB.LB.LEXIBEDATA(PONTO_DATA,'yyyy')) - TO_NUMBER(SBDB.LB.LEXIBEDATA(CUR.DATA_INICIO,'yyyy')) + 1) SUBFASE
+        from SBDB.EMCD_PONTO_SÓCIO PONTOS,(select SBDB_PROX_FASE_CERTIF_L.MAT, SBDB_PROX_FASE_CERTIF_L.NAFASE,  SBDB_PROX_FASE_CERTIF_L.DATA_CADASTRO	
+                                   FROM	(SELECT MAT, CUR.FASE APURACAO, EMCD.VALIDAFASE(MAT, CUR.FASE) NAFASE, DATA_CADASTRO, DATA_INICIO_CONTAGEM
+                                         from SBDB.SÓCIO
+                                         where EXCLUÍDO = 0 and MAT in (select SÓCIO_MAT from SBDB.SÓCIO_CATEGORIA where CATEGORIA_COD in ('TITULAR','CONTRIBUINTE','HONORÁRIO') and SBDB.LB.LEXIBEDATA(DATA_ALTERAÇÃO,'yyyy') <= ANO)) SBDB_PROX_FASE_CERTIF_L
+                                   where SBDB_PROX_FASE_CERTIF_L.APURACAO = CUR.FASE and SBDB_PROX_FASE_CERTIF_L.NAFASE = - 1) AD_00_SÓCIOS_EM_CADA_FASE
+               where PONTOS.PONTO_DATA >= CUR.DATA_INICIO and PONTOS.PONTO_DATA <= CUR.DATA_FINAL and AD_00_SÓCIOS_EM_CADA_FASE.DATA_CADASTRO <= PONTOS.PONTO_DATA and AD_00_SÓCIOS_EM_CADA_FASE.NAFASE = -1 and AD_00_SÓCIOS_EM_CADA_FASE.MAT = PONTOS.SÓCIO_MAT (+);
+
+        -------------------------------------------------------------------------------
+        -- INCLUI APURACAO
+        -------------------------------------------------------------------------------
+        insert into SBDB.EMCD_APURAÇÃO (DATA_INI_CONT, PONTUAÇÃO, SÓCIO_MAT, APURACAO, DATA_APURAÇÃO, QTD_REGS, CERTIF_IMPRIMIR)
+        select * from (select min(PONTOS.PONTO_DATA) DATA_INI_CONT, SUM(PONTOS.PONTO_VALOR) PONTUAÇÃO, PONTOS.SÓCIO_MAT, CUR.FASE, sysdate, COUNT(PONTOS.SÓCIO_MAT) QTD_REGS, EMCD.VALIDACERTIFICADO(SUM(PONTO_VALOR), CUR.TOTAL_PONTO) as CERTIF_IMPRIMIR
+               from SBDB.EMCD_PONTO_SÓCIO PONTOS,(select SBDB_PROX_FASE_CERTIF_L.MAT, SBDB_PROX_FASE_CERTIF_L.NAFASE, SBDB_PROX_FASE_CERTIF_L.DATA_CADASTRO
+                                                  FROM (SELECT MAT, CUR.FASE APURACAO, EMCD.VALIDAFASE(MAT, CUR.FASE) NAFASE, DATA_CADASTRO
+                                         from SBDB.SÓCIO
+                                         where EXCLUÍDO = 0 and MAT in (select SÓCIO_MAT from SBDB.SÓCIO_CATEGORIA where CATEGORIA_COD in ('TITULAR','CONTRIBUINTE','HONORÁRIO') and SBDB.LB.LEXIBEDATA(DATA_ALTERAÇÃO,'yyyy') <= ANO))	SBDB_PROX_FASE_CERTIF_L
+                                                  where SBDB_PROX_FASE_CERTIF_L.APURACAO = CUR.FASE and SBDB_PROX_FASE_CERTIF_L.NAFASE = - 1) AD_00_SÓCIOS_EM_CADA_FASE
+              where PONTOS.PONTO_DATA >= CUR.DATA_INICIO and AD_00_SÓCIOS_EM_CADA_FASE.DATA_CADASTRO <= PONTOS.PONTO_DATA and PONTOS.PONTO_DATA <= CUR.DATA_FINAL and AD_00_SÓCIOS_EM_CADA_FASE.MAT = PONTOS.SÓCIO_MAT (+)
+              group by PONTOS.SÓCIO_MAT, AD_00_SÓCIOS_EM_CADA_FASE.NAFASE)
+              WHERE SBDB.LB.LEXIBEDATA(DATA_INI_CONT,'yyyy') = ANO;
+      
+        -------------------------------------------------------------------------------
+        -- ATUALIZA DATA DE APURAÇÃO
+        -------------------------------------------------------------------------------
+        update SBDB.EMCD_FASE	set DATA_APURACAO = sysdate where FASE = CUR.FASE;
+        commit;
+       
+      end LOOP; 
+    else
+      RAISE_APPLICATION_ERROR(-20011, 'Não é mais permitido apurar o ano inferior a 2004.' || SQLERRM);
+    END IF;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE_APPLICATION_ERROR( - 20000, 'Erro em Apura_Periodo: ' || SQLERRM) ;
+END;
+
+-------------------------------------------------------------------------------
+-- ROTINA DE EMISSÃO DE EXTRATO
+-------------------------------------------------------------------------------
+PROCEDURE EMITE_EXTRATO(ANO IN VARCHAR2) AS
+  STRSQL VARCHAR2(2500) ;
+  VFASE VARCHAR2(4) ;
+  VTOTPONTO NUMBER(5, 2) ;
+BEGIN
+  SELECT FASE, TOTAL_PONTO INTO VFASE, VTOTPONTO  FROM SBDB.EMCD_FASE  WHERE SBDB.LB.LEXIBEDATA(DATA_INICIO,'yyyy') = ANO;
+  DELETE FROM SBDB.EMCD_PONTO_FASE WHERE APURACAO = VFASE;
+  DELETE FROM SBDB.EMCD_APURAÇÃO WHERE APURACAO = VFASE;
+  -------------------------------------------------------------------------------
+  -- LOOPING DAS FASES A SEREM TRATADAS
+  -------------------------------------------------------------------------------
+  FOR CUR IN (SELECT FASE, DATA_INICIO, DATA_FINAL, TOTAL_PONTO	FROM SBDB.EMCD_FASE	WHERE SBDB.LB.LEXIBEDATA(DATA_INICIO,'yyyy') = ANO	ORDER BY FASE)
+  LOOP
+    -------------------------------------------------------------------------------
+    -- INCLUI PONTO_FASE
+    -------------------------------------------------------------------------------
+    INSERT INTO SBDB.EMCD_PONTO_FASE(SOCIO_MAT, ATIV_COD, PONTO_COD, APURACAO, SUBFASE)		
+    SELECT PONTOS.SÓCIO_MAT, PONTOS.ATIV_COD, PONTOS.PONTO_COD, CUR.FASE, TO_CHAR(TO_NUMBER(SBDB.LB.LEXIBEDATA(PONTO_DATA,'yyyy')) - TO_NUMBER(SBDB.LB.LEXIBEDATA(CUR.DATA_INICIO,'yyyy')) + 1) SUBFASE
+    FROM SBDB.EMCD_PONTO_SÓCIO PONTOS,(SELECT SBDB_PROX_FASE_CERTIF_L.MAT, SBDB_PROX_FASE_CERTIF_L.NAFASE
+                                       FROM (SELECT MAT, CUR.FASE APURACAO, EMCD.VALIDAFASE(MAT, CUR.FASE) NAFASE
+                                             FROM SBDB.SÓCIO
+                                             WHERE SBDB.LB.LEXIBEDATA(DATA_CADASTRO,'yyyy') <= ANO AND EXCLUÍDO = 0) SBDB_PROX_FASE_CERTIF_L
+                                       WHERE SBDB_PROX_FASE_CERTIF_L.APURACAO = CUR.FASE AND SBDB_PROX_FASE_CERTIF_L.NAFASE = - 1) AD_00_SÓCIOS_EM_CADA_FASE
+    WHERE PONTOS.PONTO_DATA >= CUR.DATA_INICIO AND PONTOS.PONTO_DATA <= CUR.DATA_FINAL AND AD_00_SÓCIOS_EM_CADA_FASE.NAFASE = - 1 AND AD_00_SÓCIOS_EM_CADA_FASE.MAT = PONTOS.SÓCIO_MAT (+);
+    -------------------------------------------------------------------------------
+    -- INCLUI APURACAO
+    -------------------------------------------------------------------------------
+    INSERT INTO SBDB.EMCD_APURAÇÃO(DATA_INI_CONT, PONTUAÇÃO, SÓCIO_MAT, APURACAO, DATA_APURAÇÃO, QTD_REGS, CERTIF_IMPRIMIR)
+    select * from (select min(PONTOS.PONTO_DATA) DATA_INI_CONT, SUM(PONTOS.PONTO_VALOR) PONTUAÇÃO, PONTOS.SÓCIO_MAT, CUR.FASE, sysdate, COUNT(PONTOS.SÓCIO_MAT) QTD_REGS, VALIDACERTIFICADO(SUM(PONTO_VALOR), CUR.TOTAL_PONTO) as CERTIF_IMPRIMIR
+                   from SBDB.EMCD_PONTO_SÓCIO PONTOS,(select SBDB_PROX_FASE_CERTIF_L.MAT, SBDB_PROX_FASE_CERTIF_L.NAFASE
+                                                      from(select MAT, CUR.FASE APURACAO, EMCD.VALIDAFASE(MAT, CUR.FASE) as NAFASE
+                                                           FROM SBDB.SÓCIO
+                                                           WHERE SBDB.LB.LEXIBEDATA(DATA_CADASTRO,'yyyy') <= ANO AND EXCLUÍDO = 0)	SBDB_PROX_FASE_CERTIF_L
+                                                       WHERE SBDB_PROX_FASE_CERTIF_L.APURACAO = CUR.FASE AND SBDB_PROX_FASE_CERTIF_L.NAFASE = - 1) AD_00_SÓCIOS_EM_CADA_FASE
+                  where PONTOS.PONTO_DATA >= CUR.DATA_INICIO and PONTOS.PONTO_DATA <= CUR.DATA_FINAL and PONTOS.SÓCIO_MAT (+) = AD_00_SÓCIOS_EM_CADA_FASE.MAT
+                  GROUP BY PONTOS.SÓCIO_MAT, AD_00_SÓCIOS_EM_CADA_FASE.NAFASE 
+                  order by PONTOS.SÓCIO_MAT)
+      WHERE SBDB.LB.LEXIBEDATA(DATA_INI_CONT,'yyyy') = ANO;
+      COMMIT;
+  END LOOP;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE_APPLICATION_ERROR( - 20000, 'Erro em Emitir_Extrato: ' || SQLERRM) ;
+  END;
+
+  -------------------------------------------------------------------------------
+  -- VALIDA A FASE
+  -------------------------------------------------------------------------------
+  FUNCTION VALIDAFASE (SOC IN NUMBER,APUR IN VARCHAR2) RETURN NUMBER AS ULT_FASE VARCHAR2(5) ;
+    PRIM_DIA_PROX_FASE DATE;
+    FASE_PROX VARCHAR(5) ;
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+  
+    SELECT NVL(MAX(APURACAO),-1) INTO ULT_FASE FROM SBDB.EMCD_APURAÇÃO WHERE SÓCIO_MAT = SOC AND CERTIF_IMPRIMIR = -1 AND TO_NUMBER(APURACAO) < TO_NUMBER(APUR);
+    IF ULT_FASE = -1 THEN
+      RETURN -1;
+    ELSE
+      -------------------------------------------------------------------------------
+      --PRIMEIRO DIA DA PRÓXIMA FASE
+      -------------------------------------------------------------------------------
+      SELECT DATA_FINAL + 1	INTO PRIM_DIA_PROX_FASE
+      FROM SBDB.EMCD_FASE
+      WHERE FASE = ULT_FASE;
+      -------------------------------------------------------------------------------
+      --QUAL A PRÓXIMA FASE
+      -------------------------------------------------------------------------------
+      SELECT MAX(FASE) INTO FASE_PROX
+      FROM SBDB.EMCD_FASE
+      WHERE PRIM_DIA_PROX_FASE > (SELECT DATA_INICIO_CONTAGEM FROM SÓCIO WHERE MAT = SOC);
+      -------------------------------------------------------------------------------
+      --A FASE SOLICITADA ESTÁ CONTEMPLADA?
+      -------------------------------------------------------------------------------
+      IF APUR >= FASE_PROX THEN
+        RETURN -1;
+      ELSE
+        RETURN 0;
+      END IF;
+    END IF;
+    
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE_APPLICATION_ERROR( - 20000, 'Erro em ValidaFase: ' || SQLERRM) ;
+  END;
+
+  -------------------------------------------------------------------------------
+  -- VALIDA A CERTIFICAÇÃO
+  -------------------------------------------------------------------------------
+  FUNCTION VALIDACERTIFICADO (VALOR IN NUMBER, TOTAL_PONTO IN NUMBER)	RETURN NUMBER AS
+  BEGIN
+    IF VALOR >= TOTAL_PONTO THEN
+      RETURN -1;
+    ELSE
+      RETURN 0;
+    END IF;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE_APPLICATION_ERROR( - 20000, 'Erro em ValidaCertificado: ' || SQLERRM) ;
+  END;
+
+
+END EMCD;

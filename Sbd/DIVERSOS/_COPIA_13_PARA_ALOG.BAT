@@ -1,0 +1,1 @@
+rem labscript -arq C:\oracle\flash_recovery_area\SBDB\BACKUP_ORACLE\COPIA_13_PARA_ALOG.LAB -log C:\oracle\flash_recovery_area\SBDB\BACKUP_ORACLE\COPIA_13_PARA_ALOG.log -de contato@xxxxxxx.org.br -para suporte@xxxxxxx.com.br -assunto "SBDB - COPIA_13_PARA_ALOG BANCO" -servidor "smtpi.xxxxxxx.org.br" -semconfirm

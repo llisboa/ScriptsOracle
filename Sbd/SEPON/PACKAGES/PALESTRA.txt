@@ -1,0 +1,142 @@
+CREATE OR REPLACE
+PACKAGE PALESTRA
+IS
+PROCEDURE ATUALIZA;
+PROCEDURE ATUALIZA_LINK;
+PROCEDURE VALIDA_CONN;
+PROCEDURE CRIA_JOB
+  (
+    MINS IN NUMBER DEFAULT 0);
+PROCEDURE REMOVE_JOB;
+  FUNCTION MINS_ASSIST
+    (
+      VVIDEO FLOAT,
+      VUSUARIO FLOAT)
+    RETURN FLOAT;
+  END;
+  /
+CREATE OR REPLACE
+PACKAGE BODY PALESTRA
+AS
+  --------------------------------------------------------------------------------
+  -- Encarregade de disparar as procedures informadas
+  --------------------------------------------------------------------------------
+PROCEDURE ATUALIZA
+AS
+BEGIN
+  VALIDA_CONN;
+  ATUALIZA_LINK;
+  CRIA_JOB;
+END;
+--------------------------------------------------------------------------------
+-- Atualiza o campo de quantidade de conexoes
+--------------------------------------------------------------------------------
+PROCEDURE ATUALIZA_LINK
+AS
+  QTD INTEGER;
+BEGIN
+  FOR CUR IN
+  (SELECT SEQ FROM SEPON.LINK
+  )
+  LOOP
+    QTD := 0;
+     SELECT COUNT(*) INTO QTD FROM SEPON.CONEXAO WHERE LINK_SEQ = CUR.SEQ;
+     UPDATE SEPON.LINK SET NR_CONN_ATUAL = QTD WHERE SEQ = CUR.SEQ;
+  END LOOP;
+END;
+--------------------------------------------------------------------------------
+-- Limpa conexoes inativas ap¢s um determinado tempo
+--------------------------------------------------------------------------------
+PROCEDURE VALIDA_CONN
+AS
+  MINS VARCHAR2(10);
+BEGIN
+  BEGIN
+     SELECT NVL(CONFIG,'3')
+       INTO MINS
+       FROM SEPON.SYS_CONFIG_GLOBAL
+      WHERE PARAM='SEPON_CONEXAO_MAX_MINS_SEM_CONFIRM';
+  EXCEPTION
+  WHEN OTHERS THEN
+    MINS := '3';
+  END;
+   DELETE
+     FROM SEPON.CONEXAO
+    WHERE (SYSDATE - MOMENTO_CONFIRM)*1440 > TO_NUMBER(MINS,'999999.99');
+END;
+--------------------------------------------------------------------------------
+-- CRIA JOB CONFORME PARAMETRO EM SYS_CONFIG_GLOBAL
+--------------------------------------------------------------------------------
+PROCEDURE CRIA_JOB
+  (
+    MINS IN NUMBER DEFAULT 0)
+AS
+  MINS2  VARCHAR2(10);
+  JOBNUM NUMBER;
+BEGIN
+  REMOVE_JOB;
+  IF MINS = 0 THEN
+    BEGIN
+       SELECT NVL(CONFIG,'3')
+         INTO MINS2
+         FROM SEPON.SYS_CONFIG_GLOBAL
+        WHERE PARAM='SEPON_CONEXAO_INTERV_VER_MINS';
+    EXCEPTION
+    WHEN OTHERS THEN
+      MINS2 := '3';
+    END;
+  ELSE
+    MINS2 := TO_CHAR(MINS);
+  END IF;
+  DBMS_JOB.SUBMIT(JOBNUM,'/* SEPON CHECAGEM DE CONEXÕES */ BEGIN SEPON.PALESTRA.VALIDA_CONN;END;',SYSDATE,'SYSDATE + ' || MINS2 || '/1440');
+END;
+--------------------------------------------------------------------------------
+-- CRIA JOB CONFORME PARAMETRO EM SYS_CONFIG_GLOBAL
+--------------------------------------------------------------------------------
+PROCEDURE REMOVE_JOB
+AS
+BEGIN
+  FOR CUR IN
+  (SELECT JOB
+     FROM ALL_JOBS
+    WHERE INSTR(WHAT,'/* SEPON CHECAGEM DE CONEXÕES */')<>0
+  )
+  LOOP
+    DBMS_JOB.REMOVE(CUR.JOB);
+  END LOOP;
+END;
+--------------------------------------------------------------------------------
+-- BUSCA TOTAL DE MINS VISUALIZADOS DE UM VÍDEO PARA USUÁRIO
+--------------------------------------------------------------------------------
+FUNCTION MINS_ASSIST
+  (
+    VVIDEO FLOAT,
+    VUSUARIO FLOAT)
+  RETURN FLOAT
+AS
+  TOT1 NUMBER(10,2);
+  TOT2 NUMBER(10,2);
+BEGIN
+  BEGIN
+     SELECT SUM(DURACAO_MIN)
+       INTO TOT1
+       FROM SEPON.VIDEO_ASSIST
+      WHERE VIDEO_SEQ=VVIDEO
+    AND USUARIO_SEQ  =VUSUARIO;
+  EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    TOT1 := 0;
+  END;
+  BEGIN
+     SELECT (SYSDATE-MOMENTO_ENTRADA)*1440
+       INTO TOT2
+       FROM SEPON.CONEXAO
+      WHERE VIDEO_SEQ=VVIDEO
+    AND USUARIO_SEQ  =VUSUARIO;
+  EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    TOT2 := 0;
+  END;
+  RETURN TOT1 + TOT2;
+END;
+END PALESTRA;

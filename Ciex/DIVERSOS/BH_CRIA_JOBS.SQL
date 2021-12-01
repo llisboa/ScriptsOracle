@@ -1,0 +1,2 @@
+EXEC DBMS_CX.PROG_GERA_PACOTES ('GERA_PACOTES_BH','18:00:00','D:\CXBH_T', 'INTERCON','CXBH.IMBH.COM.BR','cxrj@xxxxxxxxx.com.br;marcio@xxxxxxxxx.com.br;luciano.lisboa@xxxxxxxxx.com.br', '10.0.0.101');
+EXEC DBMS_CX.PROG_RECEBE_PACOTES('RECEBE_PACOTES_RJ', '2','CXRJ', 'D:\CXBH_T', 'INTERCON', 'CXBH.IMBH.COM.BR', 'marcio@xxxxxxxxx.com.br;luciano.lisboa@xxxxxxxxx.com.br', '10.0.0.101', 'EXDOMBH/ADMIN\CXBH', 'INTERCON', '10.0.0.101');

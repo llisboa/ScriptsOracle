@@ -1,0 +1,11 @@
+ESQUEMA: ICFT
+ARQUIVO: [esquema].SQL
+
+drop database 'c:\almod2.fdb';
+create database 'c:\almod2.fdb';
+
+<<cria estrutura de tabelas>>
+<<cria relacionamentos>>
+<<cria triggers>>
+<<cria usuários>>
+.TÉRMINO

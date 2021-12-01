@@ -1,0 +1,55 @@
+CREATE OR REPLACE TRIGGER SEPON.AFT_CONEXAO_VAL AFTER
+   INSERT OR
+   UPDATE OR
+   DELETE ON SEPON.CONEXAO FOR EACH ROW DECLARE PROXSEQ NUMBER;
+  
+  DURACAO NUMBER;
+  BEGIN
+    -- ATUALIZA QTD DE CONEXOES EM LINKS
+    IF DELETING THEN
+       UPDATE SEPON."LINK"
+      SET NR_CONN_ATUAL = NVL(NR_CONN_ATUAL,0) - 1
+        WHERE SEQ       = :OLD.LINK_SEQ;
+      -- REGISTRA ASSIST
+      IF NVL(:OLD.VIDEO_SEQ,0)<>0 THEN
+         SELECT NVL(MAX(SEQ),0)+1
+           INTO PROXSEQ
+           FROM SEPON.VIDEO_ASSIST
+          WHERE VIDEO_SEQ = :OLD.VIDEO_SEQ;
+        
+        DURACAO := TRUNC( (SYSDATE-:OLD.MOMENTO_ENTRADA)*1440,4);
+         INSERT
+           INTO SEPON.VIDEO_ASSIST
+          (
+            VIDEO_SEQ  ,
+            SEQ        ,
+            MOMENTO    ,
+            USUARIO_SEQ,
+            DURACAO_MIN,
+            NAVEGADOR
+          )
+          VALUES
+          (
+            :OLD.VIDEO_SEQ  ,
+            PROXSEQ         ,
+            SYSDATE         ,
+            :OLD.USUARIO_SEQ,
+            DURACAO         ,
+            :OLD.NAVEGADOR
+          );
+      END IF;
+    ELSIF INSERTING THEN
+       UPDATE SEPON."LINK"
+      SET NR_CONN_ATUAL = NVL(NR_CONN_ATUAL,0) + 1
+        WHERE SEQ       = :NEW.LINK_SEQ;
+    ELSE
+      IF :OLD.LINK_SEQ <> :NEW.LINK_SEQ THEN
+         UPDATE SEPON."LINK"
+        SET NR_CONN_ATUAL = NVL(NR_CONN_ATUAL,0) - 1
+          WHERE SEQ       = :OLD.LINK_SEQ;
+         UPDATE SEPON."LINK"
+        SET NR_CONN_ATUAL = NVL(NR_CONN_ATUAL,0) + 1
+          WHERE SEQ       = :NEW.LINK_SEQ;
+      END IF;
+    END IF;
+  END;

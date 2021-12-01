@@ -1,0 +1,1 @@
+LABSCRIPT -ARQ "C:\COPIA_SBDB.LAB" -FECHARAOCONCLUIR -EXECIMED -LOG "C:\COPIA_SBDB.LOG" -de lucianol@xxxxxxx.com.br -para web@xxxxxxx.com.br -assunto "COPIA BASE SBDB 192.168.0.18 PARA 10.0.0.219" -servidor 10.0.0.45

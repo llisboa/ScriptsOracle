@@ -1,0 +1,17 @@
+CREATE OR REPLACE PROCEDURE sp_senha_associados (
+       p_MATRICULA in number,
+       p_SENHA in varchar2,
+       p_status_str out varchar2)as
+begin
+ p_status_str:='Senha atualizada com sucesso.';
+ update  sbdb.sócio set SENHA = P_SENHA ,
+                        SYS_USUARIO_ATUALIZA=(SELECT CRM_ESTADO||CRM FROM SBDB.SÓCIO WHERE MAT=p_Matricula),
+                        sys_momento_atualiza = sysdate
+  WHERE
+          MAT = P_MATRICULA;
+exception
+  when others then
+ p_status_str:=SQLERRM;
+ raise_application_error(-20000, 'Erro ao atualizar cadastro - ' || SQLERRM);
+end;
+/

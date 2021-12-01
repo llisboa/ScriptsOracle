@@ -1,0 +1,674 @@
+CREATE OR REPLACE
+PACKAGE "LB"
+IS
+FUNCTION LITEM
+  (
+    TEXTO IN VARCHAR2,
+    ITEM  IN NUMBER,
+    SEP   IN VARCHAR2 DEFAULT '')
+  RETURN VARCHAR2;
+FUNCTION LITEM
+  (
+    TEXTO IN VARCHAR2,
+    ITEM  IN VARCHAR2,
+    SEP   IN VARCHAR2 DEFAULT '')
+  RETURN NUMBER;
+FUNCTION LPARAM
+  (
+    CAMPO IN VARCHAR2,
+    TIPO  IN VARCHAR2)
+  RETURN VARCHAR2;
+FUNCTION LUSTR
+  (
+    TEXTO IN VARCHAR2)
+  RETURN VARCHAR2;
+FUNCTION LEXTENSO
+  (
+    VV   IN NUMBER,
+    LING IN VARCHAR2)
+  RETURN VARCHAR2;
+FUNCTION LMONTACENTO
+  (
+    STRV0       IN VARCHAR2,
+    STRCEM      IN VARCHAR2,
+    SEP         IN VARCHAR2,
+    STRDEZ      IN VARCHAR2,
+    STRPRIMADEZ IN VARCHAR2,
+    STRUNID     IN VARCHAR2)
+  RETURN VARCHAR2;
+FUNCTION LCONCATCAMP
+  (
+    DOMINIO IN VARCHAR2,
+    DELIMIT IN VARCHAR2)
+  RETURN VARCHAR2;
+FUNCTION LNUMLING
+  (
+    NUM  IN NUMBER,
+    MASC IN VARCHAR2,
+    LING IN VARCHAR2)
+  RETURN VARCHAR2;
+FUNCTION LINSEREESPACO
+  (
+    STR     IN VARCHAR2,
+    TAMANHO IN NUMBER)
+  RETURN VARCHAR2;
+FUNCTION LEXIBEDATA
+  (
+    MOMENTO IN DATE,
+    FORMATO IN VARCHAR2 DEFAULT '')
+  RETURN VARCHAR2;
+PROCEDURE LEXECUTASTRING
+  (
+    CMDSQL IN VARCHAR);
+PROCEDURE LCRIA_JOB
+  (
+    VNOMEJOB        IN VARCHAR2,
+    VPROCED         IN VARCHAR2,
+    VHORAEXEC       IN VARCHAR2,
+    VINTERVALOHORAS IN VARCHAR2 DEFAULT '24');
+PROCEDURE LCRIA_JOB_N
+  (
+    VNOMEJOB       IN VARCHAR2,
+    VPROCED        IN VARCHAR2,
+    VHORAEXEC      IN VARCHAR2,
+    VINTERVALODIAS IN NUMBER DEFAULT '1',
+    VINTERVALO     IN NUMBER DEFAULT '1',
+    VMETODO        IN VARCHAR2 DEFAULT 'd');
+PROCEDURE LAPAGA_JOB
+  (
+    VNOMEJOB IN VARCHAR2);
+END LB;
+/
+CREATE OR REPLACE
+PACKAGE BODY "LB"
+IS
+FUNCTION LITEM
+  (
+    TEXTO IN VARCHAR2,
+    ITEM  IN NUMBER,
+    SEP   IN VARCHAR2 DEFAULT '')
+  RETURN VARCHAR2
+IS
+  POS   NUMBER;
+  POS2  NUMBER;
+  BUSCA NUMBER;
+  LIMIT VARCHAR2(500);
+BEGIN
+  IF SEP                 IS NULL THEN
+    IF INSTR(TEXTO, ';') <> 0 THEN
+      LIMIT              := ';';
+    ELSE
+      LIMIT := '.';
+    END IF;
+  ELSE
+    LIMIT := SEP;
+  END IF;
+  BUSCA     := 0;
+  POS       := 1;
+  WHILE POS <= LENGTH(TEXTO)
+  LOOP
+    POS2   := INSTR(TEXTO, LIMIT, POS);
+    IF POS2 = 0 THEN
+      POS2 := LENGTH(TEXTO)+1;
+    END IF;
+    BUSCA   := BUSCA + 1;
+    IF BUSCA = ITEM THEN
+      RETURN SUBSTR(TEXTO, POS, POS2-POS);
+    ELSE
+      POS := POS2 + 1;
+    END IF;
+  END LOOP;
+  RETURN '';
+EXCEPTION
+WHEN OTHERS THEN
+  RAISE_APPLICATION_ERROR ( -20000, 'erro em litem: ' || SQLERRM);
+END LITEM;
+FUNCTION LITEM
+  (
+    TEXTO IN VARCHAR2,
+    ITEM  IN VARCHAR2,
+    SEP   IN VARCHAR2 DEFAULT '')
+  RETURN NUMBER
+IS
+  POS   NUMBER;
+  POS2  NUMBER;
+  BUSCA NUMBER;
+  LIMIT VARCHAR2(500);
+BEGIN
+  IF SEP                 IS NULL THEN
+    IF INSTR(TEXTO, ';') <> 0 THEN
+      LIMIT              := ';';
+    ELSE
+      LIMIT := '.';
+    END IF;
+  ELSE
+    LIMIT := SEP;
+  END IF;
+  BUSCA     := 0;
+  POS       := 1;
+  WHILE POS <= LENGTH(TEXTO)
+  LOOP
+    POS2   := INSTR(TEXTO, LIMIT, POS);
+    IF POS2 = 0 THEN
+      POS2 := LENGTH(TEXTO)+1;
+    END IF;
+    BUSCA                            := BUSCA + 1;
+    IF NOT ITEM                      IS NULL THEN
+      IF SUBSTR(TEXTO, POS, POS2-POS) = ITEM THEN
+        RETURN BUSCA;
+      END IF;
+    END IF;
+    POS := POS2 + 1;
+  END LOOP;
+  RETURN 0;
+EXCEPTION
+WHEN OTHERS THEN
+  RAISE_APPLICATION_ERROR ( -20000, 'erro em litem: ' || SQLERRM);
+END LITEM;
+FUNCTION LPARAM
+  (
+    CAMPO IN VARCHAR2,
+    TIPO  IN VARCHAR2)
+  RETURN VARCHAR2
+IS
+  POS   INTEGER;
+  POS2  INTEGER;
+  TEXTO VARCHAR2(4000);
+BEGIN
+  POS       := INSTR(CHR(13) || CHR(10) || CAMPO, CHR(13) || CHR(10) || TIPO || ':');
+  IF POS    <> 0 THEN
+    POS     := POS + LENGTH(TIPO) + 1;
+    POS2    := INSTR(CAMPO, CHR(13) || CHR(10), POS);
+    IF POS2  = 0 THEN
+      TEXTO := SUBSTR(CAMPO, POS);
+    ELSE
+      TEXTO := SUBSTR(CAMPO, POS, POS2-POS);
+    END IF;
+  ELSE
+    RETURN '';
+  END IF;
+  RETURN REPLACE(TEXTO, '|', CHR(10));
+EXCEPTION
+WHEN OTHERS THEN
+  RAISE_APPLICATION_ERROR ( -20000, 'erro em lparam: ' || SQLERRM);
+END LPARAM;
+FUNCTION LUSTR
+  (
+    TEXTO IN VARCHAR2)
+  RETURN VARCHAR2
+IS
+BEGIN
+  RETURN REPLACE(TEXTO, CHR(13) || CHR(10), CHR(10));
+EXCEPTION
+WHEN OTHERS THEN
+  RAISE_APPLICATION_ERROR ( -20000, 'erro em lustr: ' || SQLERRM);
+END LUSTR;
+FUNCTION LEXTENSO
+  (
+    VV   IN NUMBER,
+    LING IN VARCHAR2)
+  RETURN VARCHAR2
+IS
+  STRUNID     VARCHAR2(500);
+  STRDEZ      VARCHAR2(500);
+  STRCEM      VARCHAR2(500);
+  STRMIL      VARCHAR2(500);
+  STRCENT     VARCHAR2(500);
+  MOEDA       VARCHAR2(500);
+  SEP         VARCHAR2(500);
+  STRPRIMADEZ VARCHAR2(500);
+  STRVV       VARCHAR2(500);
+  STRV0       VARCHAR2(500);
+  STRMOEDA    VARCHAR2(500);
+  STRM0       VARCHAR2(500);
+  ESP         VARCHAR2(500);
+  SEPDEC      VARCHAR2(500);
+  Z           NUMBER;
+  SEPANDTRES  VARCHAR2(500);
+  SEPMIL      VARCHAR2(500);
+BEGIN
+  IF LING        = 'R$' THEN
+    STRUNID     := 'Um;Dois;Três;Quatro;Cinco;Seis;Sete;Oito;Nove';
+    STRPRIMADEZ := 'Onze;Doze;Treze;Quatorze;Quinze;Dezesseis;Dezesete;Dezoito;Dezenove';
+    STRDEZ      := 'Dez;Vinte;Trinta;Quarenta;Cinquenta;Sessenta;Setenta;Oitenta;Noventa';
+    STRCEM      := 'Cento;Duzentos;Trezentos;Quatrocentos;Quinhentos;Seiscentos;Setecentos;Oitocentos;Novecentos';
+    STRMIL      := 'Mil.Mil;Milhão.Milhões;Bilhão.Bilhões;Trilhão.Trilhões';
+    STRCENT     := 'Centavo.Centavos';
+    MOEDA       := 'Real;Reais;de Reais';
+    SEP         := ' e ';
+    SEPDEC      := ' e ';
+    SEPMIL      := ', ';
+    SEPANDTRES  := ' e ';
+    ESP         := ' ';
+  ELSIF LING     = 'USD' OR LING = 'US$' OR LING = 'USD.' OR LING = 'U.S.DLRS' THEN
+    STRUNID     := 'One;Two;Three;Four;Five;Six;Seven;Eight;Nine';
+    STRPRIMADEZ := 'Eleven;Twelve;Thirteen;Fourteen;Fifteen;Sixteen;Seventeen;Eighteen;Nineteen';
+    STRDEZ      := 'Tem;Twenty;Thirty;Forty;Fifty;Sixty;Seventy;Eighty;Ninety';
+    STRCEM      := 'One Hundred;Two Hundred;Three Hundred;Four Hundred;Five Hundred;Six Hundred;Seven Hundred;Eight Hundred;Nine Hundred';
+    STRMIL      := 'Thousand.Thousand;Million.Millions;Billion.Billions;Trillion.Trillions';
+    STRCENT     := 'Cent.Cents';
+    MOEDA       := 'U.S. Dollar;U.S. Dollars;U.S. Dollars';
+    SEP         := ' ';
+    SEPDEC      := ' and ';
+    SEPMIL      := ', ';
+    ESP         := ' ';
+    SEPANDTRES  := ' and ';
+  ELSIF LING     = 'DM' THEN
+    STRUNID     := 'One;Two;Three;Four;Five;Six;Seven;Eight;Nine';
+    STRPRIMADEZ := 'Eleven;Twelve;Thirteen;Fourteen;Fifteen;Sixteen;Seventeen;Eighteen;Nineteen';
+    STRDEZ      := 'Tem;Twenty;Thirty;Forty;Fifty;Sixty;Seventy;Eighty;Ninety';
+    STRCEM      := 'One Hundred;Two Hundred;Three Hundred;Four Hundred;Five Hundred;Six Hundred;Seven Hundred;Eight Hundred;Nine Hundred';
+    STRMIL      := 'Thousand.Thousand;Million.Millions;Billion.Billions;Trillion.Trillions';
+    STRCENT     := 'Cent.Cents';
+    MOEDA       := 'Deutsche Mark;Deutsche Mark;Deutsche Mark';
+    SEP         := ' ';
+    SEPDEC      := ' and ';
+    SEPMIL      := ', ';
+    ESP         := ' ';
+    SEPANDTRES  := ' and ';
+  ELSIF LING     = 'YEN' THEN
+    STRUNID     := 'One;Two;Three;Four;Five;Six;Seven;Eight;Nine';
+    STRPRIMADEZ := 'Eleven;Twelve;Thirteen;Fourteen;Fifteen;Sixteen;Seventeen;Eighteen;Nineteen';
+    STRDEZ      := 'Tem;Twenty;Thirty;Forty;Fifty;Sixty;Seventy;Eighty;Ninety';
+    STRCEM      := 'One Hundred;Two Hundred;Three Hundred;Four Hundred;Five Hundred;Six Hundred;Seven Hundred;Eight Hundred;Nine Hundred';
+    STRMIL      := 'Thousand.Thousand;Million.Millions;Billion.Billions;Trillion.Trillions';
+    STRCENT     := 'Cent.Cents';
+    MOEDA       := 'Yen;Yen;Yen';
+    SEP         := ' ';
+    SEPDEC      := ' and ';
+    SEPMIL      := ', ';
+    ESP         := ' ';
+    SEPANDTRES  := ' and ';
+  ELSE
+    RETURN '#Erro';
+  END IF;
+  STRVV := TO_CHAR(VV, 'FM000000000000000.00');
+  FOR Z IN 1..6
+  LOOP
+    STRM0                    := '';
+    IF Z                     <> 6 THEN
+      STRV0                  := SUBSTR(STRVV, Z * 3 - 2, 3);
+      STRM0                  := LMONTACENTO(STRV0, STRCEM, SEP, STRDEZ, STRPRIMADEZ, STRUNID);
+      IF NOT STRM0           IS NULL OR Z = 5 THEN
+        IF Z                  < 5 THEN
+          IF TO_NUMBER(STRV0) = 1 THEN
+            STRM0            := STRM0 || ESP || LITEM(LITEM(STRMIL, 5 - Z, ';'), 1, '.');
+          ELSE
+            STRM0 := STRM0 || ESP || LITEM(LITEM(STRMIL, 5 - Z, ';'), 2, '.');
+          END IF;
+        ELSE
+          IF TO_NUMBER(SUBSTR(STRVV, 1, 15))      <> 0 THEN
+            IF SUBSTR(STRVV, 10, 6)                = 'FM000000' THEN
+              STRM0                               := STRM0 || ESP || LITEM(MOEDA, 3, ';');
+            ELSIF TO_NUMBER(SUBSTR(STRVV, 1, 15))  = 1 THEN
+              STRM0                               := STRM0 || ESP || LITEM(MOEDA, 1, ';');
+            ELSIF TO_NUMBER(SUBSTR(STRVV, 1, 15)) <> 1 THEN
+              STRM0                               := STRM0 || ESP || LITEM(MOEDA, 2, ';');
+            END IF;
+          END IF;
+        END IF;
+      END IF;
+    ELSE
+      STRV0                := 0 || SUBSTR(STRVV, 17, 2);
+      STRM0                := LMONTACENTO(STRV0, STRCEM, SEP, STRDEZ, STRPRIMADEZ, STRUNID);
+      IF NOT STRM0         IS NULL THEN
+        IF TO_NUMBER(STRV0) = 1 THEN
+          STRM0            := STRM0 || ' ' || LITEM(STRCENT, 1, '.');
+        ELSE
+          STRM0 := STRM0 || ' ' || LITEM(STRCENT, 2, '.');
+        END IF;
+      END IF;
+    END IF;
+    IF NOT STRM0        IS NULL THEN
+      IF Z               = 6 THEN
+        IF NOT STRMOEDA IS NULL THEN
+          STRMOEDA      := STRMOEDA || SEPDEC || STRM0;
+        ELSE
+          STRMOEDA := STRMOEDA || '' || STRM0;
+        END IF;
+      ELSE
+        IF NOT STRMOEDA      IS NULL AND TO_NUMBER(STRV0) <> 0 THEN
+          IF TO_NUMBER(STRV0) < 101 OR MOD(TO_NUMBER(STRV0), 100) = 0 THEN
+            STRMOEDA         := STRMOEDA || SEPANDTRES || STRM0;
+          ELSE
+            STRMOEDA := STRMOEDA || SEPMIL || STRM0;
+          END IF;
+        ELSE
+          STRMOEDA := STRMOEDA || '' || STRM0;
+        END IF;
+      END IF;
+    END IF;
+  END LOOP;
+  RETURN STRMOEDA;
+EXCEPTION
+WHEN OTHERS THEN
+  RAISE_APPLICATION_ERROR ( -20000, 'erro em lextenso: ' || SQLERRM);
+END LEXTENSO;
+FUNCTION LMONTACENTO
+  (
+    STRV0       IN VARCHAR2,
+    STRCEM      IN VARCHAR2,
+    SEP         IN VARCHAR2,
+    STRDEZ      IN VARCHAR2,
+    STRPRIMADEZ IN VARCHAR2,
+    STRUNID     IN VARCHAR2)
+  RETURN VARCHAR2
+IS
+  POS   NUMBER;
+  ZZ    NUMBER;
+  STRM0 VARCHAR2(100);
+BEGIN
+  FOR ZZ IN 1..3
+  LOOP
+    POS                := TO_NUMBER(SUBSTR(STRV0, ZZ, 1));
+    IF POS             <> 0 THEN
+      IF ZZ             = 1 THEN
+        STRM0          := STRM0 || LITEM(STRCEM, POS, ';');
+      ELSIF ZZ          = 2 THEN
+        IF POS         <> 1 OR SUBSTR(STRV0, 3, 1) = 0 THEN
+          IF NOT STRM0 IS NULL THEN
+            STRM0      := STRM0 || SEP || LITEM(STRDEZ, POS, ';');
+          ELSE
+            STRM0 := STRM0 || '' || LITEM(STRDEZ, POS, ';');
+          END IF;
+        ELSE
+          POS          := TO_NUMBER(SUBSTR(STRV0, 3, 1));
+          IF NOT STRM0 IS NULL THEN
+            STRM0      := STRM0 || SEP || LITEM(STRPRIMADEZ, POS, ';');
+          ELSE
+            STRM0 := STRM0 || '' || LITEM(STRPRIMADEZ, POS, ';');
+          END IF;
+          EXIT;
+        END IF;
+      ELSIF ZZ        = 3 THEN
+        IF NOT STRM0 IS NULL THEN
+          STRM0      := STRM0 || SEP || LITEM(STRUNID, POS, ';');
+        ELSE
+          STRM0 := STRM0 || '' || LITEM(STRUNID, POS, ';');
+        END IF;
+      END IF;
+    END IF;
+  END LOOP;
+  IF STRM0 = 'Cento' THEN
+    STRM0 := 'Cem';
+  END IF;
+  RETURN STRM0;
+EXCEPTION
+WHEN OTHERS THEN
+  RAISE_APPLICATION_ERROR ( -20000, 'erro em lmontacento: ' || SQLERRM);
+END LMONTACENTO;
+FUNCTION LCONCATCAMP
+  (
+    DOMINIO IN VARCHAR2,
+    DELIMIT IN VARCHAR2)
+  RETURN VARCHAR2
+IS
+  X PLS_INTEGER;
+  RET VARCHAR2(4000);
+  TEXTCOL DBMS_SQL.VARCHAR2_TABLE;
+  SQLCURSOR PLS_INTEGER;
+  NUMROWS PLS_INTEGER;
+BEGIN
+  SQLCURSOR := DBMS_SQL.OPEN_CURSOR;
+  DBMS_SQL.PARSE(SQLCURSOR, DOMINIO, DBMS_SQL.V7);
+  DBMS_SQL.DEFINE_ARRAY(SQLCURSOR, 1, TEXTCOL, 10, 1);
+  NUMROWS := DBMS_SQL.EXECUTE(SQLCURSOR);
+  LOOP
+    NUMROWS := DBMS_SQL.FETCH_ROWS(SQLCURSOR);
+    DBMS_SQL.COLUMN_VALUE(SQLCURSOR, 1, TEXTCOL);
+    EXIT
+  WHEN NUMROWS < 10;
+  END LOOP;
+  DBMS_SQL.CLOSE_CURSOR(SQLCURSOR);
+  RET   := '';
+  FOR X IN 1..TEXTCOL.COUNT
+  LOOP
+    IF NOT RET IS NULL THEN
+      RET      := RET || DELIMIT;
+    END IF;
+    RET := RET || TEXTCOL(X);
+  END LOOP;
+  RETURN RET;
+EXCEPTION
+WHEN OTHERS THEN
+  RAISE_APPLICATION_ERROR ( -20000, 'erro em lconcatcamp: ' || SQLERRM);
+END LCONCATCAMP;
+FUNCTION LNUMLING
+  (
+    NUM  IN NUMBER,
+    MASC IN VARCHAR2,
+    LING IN VARCHAR2)
+  RETURN VARCHAR2
+IS
+  RESULT VARCHAR2(1000);
+BEGIN
+  RESULT   := TO_CHAR(NUM, MASC);
+  IF LING   = 'P' THEN
+    RESULT := REPLACE(RESULT, ',', '@');
+    RESULT := REPLACE(RESULT, '.', ',');
+    RESULT := REPLACE(RESULT, '@', '.');
+  END IF;
+  RETURN TRIM(RESULT);
+EXCEPTION
+WHEN OTHERS THEN
+  RAISE_APPLICATION_ERROR ( -20000, 'erro em lnumling: ' || SQLERRM);
+END LNUMLING;
+FUNCTION LINSEREESPACO
+  (
+    STR     IN VARCHAR2,
+    TAMANHO IN NUMBER)
+  RETURN VARCHAR2
+IS
+  RESULT VARCHAR2(1000);
+  I      NUMBER;
+BEGIN
+  RESULT    := STR;
+  IF TAMANHO > (LENGTH(RESULT)) THEN
+    FOR I   IN 1..(TAMANHO - LENGTH(RESULT))
+    LOOP
+      BEGIN
+        RESULT := CHR(32) || RESULT;
+      END;
+    END LOOP;
+  END IF;
+  RETURN RESULT;
+EXCEPTION
+WHEN OTHERS THEN
+  RAISE_APPLICATION_ERROR ( -20000, 'erro em LinsereEspaco: ' || SQLERRM);
+END LINSEREESPACO;
+PROCEDURE LEXECUTASTRING
+  (
+    CMDSQL IN VARCHAR)
+           IS
+  NRESULT INTEGER;
+  CCMD    INTEGER;
+  CMDEXEC VARCHAR(32767);
+BEGIN
+  CMDEXEC:=CMDSQL;
+  CCMD   :=SYS.DBMS_SQL.OPEN_CURSOR;
+  SYS.DBMS_SQL.PARSE(CCMD,CMDEXEC,DBMS_SQL.NATIVE);
+  NRESULT:=SYS.DBMS_SQL.EXECUTE(CCMD);
+  SYS.DBMS_SQL.CLOSE_CURSOR(CCMD);
+EXCEPTION
+WHEN OTHERS THEN
+  CMDEXEC:='';
+END LEXECUTASTRING;
+FUNCTION LEXIBEDATA
+  (
+    MOMENTO IN DATE,
+    FORMATO IN VARCHAR2 DEFAULT '')
+  RETURN VARCHAR2
+IS
+  VDIA      INTEGER;
+  VMES      INTEGER;
+  VANO      INTEGER;
+  VHORA     INTEGER;
+  VMINUTO   INTEGER;
+  VSEGUNDO  INTEGER;
+  VMESEXTPT VARCHAR2(200);
+  VMESEXTEN VARCHAR2(200);
+  VMESEXTES VARCHAR2(200);
+  VSUF      INTEGER;
+  VCONDICAO VARCHAR2(2);
+BEGIN
+  VDIA        := EXTRACT(DAY FROM MOMENTO);
+  VMES        := EXTRACT(MONTH FROM MOMENTO);
+  VANO        := EXTRACT(YEAR FROM MOMENTO);
+  VHORA       := EXTRACT(HOUR FROM TO_TIMESTAMP(MOMENTO));
+  VMINUTO     := EXTRACT(MINUTE FROM TO_TIMESTAMP(MOMENTO));
+  VSEGUNDO    := EXTRACT(SECOND FROM TO_TIMESTAMP(MOMENTO));
+  VMESEXTPT   := 'Janeiro,Fevereiro,Março,Abril,Maio,Junho,Julho,Agosto,Setembro,Outubro,Novembro,Dezembro';
+  VMESEXTEN   := 'January,February,March,April,May,June,July,August,September,October,November,December';
+  VMESEXTES   := 'Enero,Febrero,Marzo,Abril,Mayo,Junio,Julio,Agosto,Septiembre,Octubre,Noviembre,Diciembre';
+  VSUF        := VDIA MOD 10;
+  IF (VDIA     > 10) AND (VDIA < 14 ) THEN
+    VCONDICAO := 'th';
+  ELSIF VSUF   = 1 THEN
+    VCONDICAO := 'st';
+  ELSIF VSUF   = 2 THEN
+    VCONDICAO := 'nd';
+  ELSIF VSUF   = 3 THEN
+    VCONDICAO := 'rd';
+  ELSE
+    VCONDICAO := 'th';
+  END IF;
+  CASE
+  WHEN (FORMATO = 'sd') THEN
+    RETURN TO_CHAR(MOMENTO,'DD/MM/YYYY'); -- Simples Data DD/MM/YYYY
+  WHEN (FORMATO = 'sh') THEN
+    RETURN TO_CHAR(MOMENTO,'TS'); -- Simples Hora 24H:MI:SS
+  WHEN (FORMATO = 'p') OR (FORMATO = 'dd de mmmm de yyyy') THEN
+    RETURN VDIA || ' de ' || LB.LITEM(VMESEXTPT,VMES,',') || ' de ' || VANO;
+  WHEN (FORMATO = 'c') OR (FORMATO = 'dd de mmmm de yyyy c') THEN
+    RETURN VDIA || ' de ' || LB.LITEM(VMESEXTES,VMES,',') || ' de ' || VANO;
+  WHEN (FORMATO = 'i') OR (FORMATO = 'mmmm dth, yyyy') OR (FORMATO = 'mmmm dth yyyy') THEN
+    RETURN LB.LITEM(VMESEXTEN,VMES,',') || ' ' || VDIA || VCONDICAO || ', ' || VANO;
+  WHEN (FORMATO = 'a') OR (FORMATO = 'dd mmm yyyy') THEN
+    RETURN SUBSTR(LB.LITEM(VMESEXTEN,VMES,','),1,3) || ' ' || VDIA || VCONDICAO || ', ' || VANO;
+  WHEN (FORMATO = 'ai') OR (FORMATO = 'dd mmm yyyy i') THEN
+    RETURN LPAD(VDIA,2,'0') || ' ' || UPPER(LB.LITEM(VMESEXTEN,VMES,',')) || ', ' || LPAD(VANO,4,'0');
+  WHEN (FORMATO = 'mmm dd, yyyy') OR (FORMATO = 'mmm dd yyyy') THEN
+    RETURN SUBSTR(UPPER(LB.LITEM(VMESEXTPT,VMES,',')),1,3) || ' ' || VDIA || ', ' || LPAD(VANO,4,'0');
+  WHEN (FORMATO = 'mmm dd, yyyy i') OR (FORMATO = 'mmm dd yyyy i') THEN
+    RETURN SUBSTR(UPPER(LB.LITEM(VMESEXTEN,VMES,',')),1,3) || ' ' || VDIA || ', ' || LPAD(VANO,4,'0');
+  WHEN (FORMATO = 'mmm dd, yyyy c') OR (FORMATO = 'mmm dd yyyy c') THEN
+    RETURN SUBSTR(UPPER(LB.LITEM(VMESEXTES,VMES,',')),1,3) || ' ' || VDIA || ', ' || LPAD(VANO,4,'0');
+  WHEN (FORMATO = 'mmmm, yyyy') OR (FORMATO = 'mmmm yyyy') THEN
+    RETURN LB.LITEM(VMESEXTPT,VMES,',') || ', ' || LPAD(VANO,4,'0');
+  WHEN (FORMATO = 'mmmm, yyyy i') OR (FORMATO = 'mmmm yyyy i') THEN
+    RETURN LB.LITEM(VMESEXTEN,VMES,',') || ', ' || VANO;
+  WHEN (FORMATO = 'mmmm, yyyy c') OR (FORMATO = 'mmmm yyyy c') THEN
+    RETURN LB.LITEM(VMESEXTES,VMES,',') || ', ' || VANO;
+  WHEN (FORMATO = 'mmmm/yy') OR (FORMATO = 'mmmm yy') THEN
+    RETURN LB.LITEM(VMESEXTPT,VMES,',') || '/' || SUBSTR(VANO,3,2);
+  WHEN (FORMATO = 'mmm') THEN
+    RETURN SUBSTR(UPPER(LB.LITEM(VMESEXTPT,VMES,',')),1,3);
+  WHEN (FORMATO = 'mmm i') THEN
+    RETURN SUBSTR(UPPER(LB.LITEM(VMESEXTEN,VMES,',')),1,3);
+  WHEN (FORMATO = 'mmm c') THEN
+    RETURN SUBSTR(UPPER(LB.LITEM(VMESEXTES,VMES,',')),1,3);
+  WHEN (FORMATO = 'mmmm') THEN
+    RETURN LB.LITEM(VMESEXTPT,VMES,',');
+  WHEN (FORMATO = 'mmmm i') THEN
+    RETURN LB.LITEM(VMESEXTEN,VMES,',');
+  WHEN (FORMATO = 'mmmm c') THEN
+    RETURN LB.LITEM(VMESEXTES,VMES,',');
+  ELSE
+    RETURN VDIA || '/' || VMES || '/' || VANO || ' ' || VHORA || ':' || VMINUTO || ':' || VSEGUNDO;
+  END CASE;
+END LEXIBEDATA;
+--------------------------------------------------------------------------------------------------------------
+-- Procedimento para criação de jobs(tarefas) a serem executadas periodicamente no Oracle
+--------------------------------------------------------------------------------------------------------------
+PROCEDURE LCRIA_JOB
+  (
+    VNOMEJOB        IN VARCHAR2,
+    VPROCED         IN VARCHAR2,
+    VHORAEXEC       IN VARCHAR2,
+    VINTERVALOHORAS IN VARCHAR2 DEFAULT '24')
+AS
+  JOB BINARY_INTEGER;
+BEGIN
+  BEGIN
+    FOR CUR IN
+    (SELECT JOB FROM USER_JOBS WHERE WHAT LIKE '% ' || VNOMEJOB || ' %'
+    )
+    LOOP
+      DBMS_JOB.REMOVE(CUR.JOB);
+    END LOOP;
+  EXCEPTION
+  WHEN OTHERS THEN
+    NULL;
+  END;
+  DBMS_JOB.SUBMIT(JOB, '/* ' || VNOMEJOB || ' */begin ' || VPROCED || ';end;',TO_DATE('' || TO_CHAR(SYSDATE,'DD/MM/YYYY') || ' ' || VHORAEXEC ||'','DD/MM/YYYY HH24:MI:SS'), 'TRUNC(SYSDATE + 1) + ' || VINTERVALOHORAS || ' / 24');
+END LCRIA_JOB;
+PROCEDURE LCRIA_JOB_N
+  (
+    VNOMEJOB       IN VARCHAR2,
+    VPROCED        IN VARCHAR2,
+    VHORAEXEC      IN VARCHAR2,
+    VINTERVALODIAS IN NUMBER DEFAULT '1',
+    VINTERVALO     IN NUMBER DEFAULT '1',
+    VMETODO        IN VARCHAR2 DEFAULT 'd')
+AS
+  JOB BINARY_INTEGER;
+  VMET VARCHAR2(30);
+BEGIN
+  BEGIN
+    FOR CUR IN
+    (SELECT JOB FROM USER_JOBS WHERE WHAT LIKE '% ' || VNOMEJOB || ' %'
+    )
+    LOOP
+      DBMS_JOB.REMOVE(CUR.JOB);
+    END LOOP;
+  EXCEPTION
+  WHEN OTHERS THEN
+    NULL;
+  END;
+  CASE
+  WHEN VMETODO = 's' THEN
+    VMET      := 'SYSDATE + ' || VINTERVALO || '/86400'; -- Intervalo em Segundos
+  WHEN VMETODO = 'm' THEN
+    VMET      := 'SYSDATE + ' || VINTERVALO || '/1440'; -- Intervalo em Minutos
+  WHEN VMETODO = 'h' THEN
+    VMET      := 'SYSDATE + ' || VINTERVALO || '/24'; -- Intervalo em Horas
+  WHEN VMETODO = 'd' THEN
+    VMET      := 'TRUNC(SYSDATE + '|| VINTERVALODIAS || ') + ' || VINTERVALO || '/24'; -- Intervalo em Horas
+  WHEN VMETODO = 'x' THEN
+    VMET      := 'TRUNC(LAST_DAY(SYSDATE) + 1) + ' || VINTERVALO || '/24'; -- Todo 1 dia do Mês
+  WHEN VMETODO = '2' THEN
+    VMET      := 'NEXT_DAY(TRUNC(SYSDATE), ''Monday'') + ' || VINTERVALO || '/24)'; -- Tda Segunda na Hora Especificada
+  WHEN VMETODO = '3' THEN
+    VMET      := 'NEXT_DAY(TRUNC(SYSDATE), ''Tuesday'') + ' || VINTERVALO || '/24)'; -- Tda Segunda na Hora Especificada
+  WHEN VMETODO = '4' THEN
+    VMET      := 'NEXT_DAY(TRUNC(SYSDATE), ''Wednesday'') + ' || VINTERVALO || '/24)'; -- Tda Segunda na Hora Especificada
+  WHEN VMETODO = '5' THEN
+    VMET      := 'NEXT_DAY(TRUNC(SYSDATE), ''Thursday'') + ' || VINTERVALO || '/24)'; -- Tda Segunda na Hora Especificada
+  WHEN VMETODO = '6' THEN
+    VMET      := 'NEXT_DAY(TRUNC(SYSDATE), ''Friday'') + ' || VINTERVALO || '/24)'; -- Tda Segunda na Hora Especificada
+  WHEN VMETODO = 'S' THEN
+    VMET      := 'NEXT_DAY(TRUNC(SYSDATE), ''Saturday'') + ' || VINTERVALO || '/24)'; -- Tda Segunda na Hora Especificada
+  WHEN VMETODO = 'D' THEN
+    VMET      := 'NEXT_DAY(TRUNC(SYSDATE), ''Sunday'') + ' || VINTERVALO || '/24)'; -- Tda Segunda na Hora Especificada
+  END CASE;
+  DBMS_JOB.SUBMIT(JOB, '/* ' || VNOMEJOB || ' */begin ' || VPROCED || ';end;',TO_DATE('' || TO_CHAR(SYSDATE,'DD/MM/YYYY') || ' ' || VHORAEXEC ||'','DD/MM/YYYY HH24:MI:SS'), VMET);
+END LCRIA_JOB_N;
+--------------------------------------------------------------------------------------------------------------
+-- Procedimento para exclusão de jobs(tarefas) no Oracle
+--------------------------------------------------------------------------------------------------------------
+PROCEDURE LAPAGA_JOB
+  (
+    VNOMEJOB IN VARCHAR2)
+AS
+  JOB BINARY_INTEGER;
+BEGIN
+  BEGIN
+    FOR CUR IN
+    (SELECT JOB FROM USER_JOBS WHERE WHAT LIKE '% ' || VNOMEJOB || ' %'
+    )
+    LOOP
+      DBMS_JOB.REMOVE(CUR.JOB);
+    END LOOP;
+  END;
+END LAPAGA_JOB;
+END LB;

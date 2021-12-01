@@ -1,0 +1,45 @@
+CREATE OR REPLACE PROCEDURE SBDB.SITE_QUESTAO_ORD
+    (
+      QQ_SEQ NUMBER)
+  AS
+    DECLARE
+      SS  NUMBER;
+      SSS NUMBER;
+    BEGIN
+      SS      := 1;
+      FOR cur IN
+      (SELECT quest_seq,
+        seq
+         FROM sbdb.site_quest_questao
+        WHERE quest_seq = QQ_SEQ
+     ORDER BY NVL(questao_sup_seq,0),
+        NVL(ordem,0)                ,
+        seq
+      )
+      LOOP
+         UPDATE sbdb.site_quest_questao
+        SET ordem         = SS
+          WHERE quest_seq = cur.quest_seq
+        AND seq           = cur.seq;
+        
+        SSS      := 1;
+        FOR CUR2 IN
+        (SELECT SEQ
+           FROM SBDB.SITE_QUEST_RESP
+          WHERE QUEST_SEQ = CUR.QUEST_SEQ
+        AND QUESTAO_SEQ   = CUR.SEQ
+       ORDER BY NVL(ORDEM,0),
+          SEQ
+        )
+        LOOP
+           UPDATE SBDB.SITE_QUEST_RESP
+          SET ORDEM         = SSS
+            WHERE QUEST_SEQ = CUR.QUEST_SEQ
+          AND QUESTAO_SEQ   = CUR.SEQ
+          AND SEQ           =CUR2.SEQ;
+          
+          SSS := SSS + 1;
+        END LOOP;
+        SS := SS + 1;
+      END LOOP;
+    END;

@@ -1,0 +1,1 @@
+LABSCRIPT -ARQ "C:\COPIA_IMRJ.LAB" -FECHARAOCONCLUIR -EXECIMED -LOG "C:\COPIA_IMRJ.LOG" -de lucianol@xxxxxxx.com.br -para cleiton.rodrigues@xxxxxxx.com.br -assunto "COPIA BASE IMRJ 10.0.0.51 PARA 10.0.0.47" -servidor 10.0.0.45

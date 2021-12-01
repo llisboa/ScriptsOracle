@@ -1,0 +1,1967 @@
+/* **********************************************************************************
+   INTERCRAFT SOLUTIONS INFORMÁTICA LTDA - 2008
+   SCRIPT CRIADO EM 22/09/2011 02:43
+
+   IMPORTANTE!!!
+   * O SISTEMA LOGARÁ SYSTEM PARA INICIAR A EXECUÇÃO, LOGO, MUITO CUIDADO!
+   * CASO O USUÁRIO DO ESQUEMA JÁ EXISTA, ESTE SERÁ ELIMINADO, PORTANTO, TENHA A CERTEZA DAQUILO QUE ESTÁ FAZENDO.
+   * ARQUIVO C:\ANAIS2.LOG REGISTRARÁ O LOG DE EXECUÇÃO, QUE DEVE SER VERIFICADO.
+   * CASO BANCO POSSUA ACENTOS, PRECISARÁ GARANTIR FORMATO ANSI ANTES DA EXECUÇÃO. PARA ISSO, EDITE O CONTEÚDO NO NOTEPAD E SALVE FAZENDO OPÇÃO POR ESTE FORMATO.
+*/
+
+SET ECHO ON
+SET HEADING OFF
+SET PAGESIZE 0
+SET LINES 10000
+SET LINESIZE 10000
+SET SERVEROUTPUT ON SIZE 40000
+SPOOL C:\ANAIS2_PARTE1.LOG
+
+-- GARANTINDO QUE TODOS TENHA ACESSO AOS RECURSOS DE PACOTE
+CONNECT SYS/XXXX@SBDB AS SYSDBA
+GRANT EXECUTE ON SYS.UTL_FILE TO PUBLIC;
+GRANT EXECUTE ON SYS.UTL_SMTP TO PUBLIC;
+GRANT EXECUTE ON SYS.UTL_TCP TO PUBLIC;
+GRANT SELECT ON SYS.V_$SESSION TO PUBLIC;
+GRANT QUERY REWRITE TO PUBLIC;
+GRANT CREATE MATERIALIZED VIEW TO PUBLIC;
+ALTER SESSION SET QUERY_REWRITE_ENABLED = TRUE;
+
+-- ELIMINA OS JOBS
+begin
+for cur in (select job from user_jobs where schema_user='ANAIS2') loop
+dbms_job.remove(cur.job);
+end loop;
+end;
+/
+
+-- INICIALIZANDO TABLESPACE
+ALTER TABLESPACE T_ANAIS2_DAT OFFLINE;
+DROP TABLESPACE T_ANAIS2_DAT INCLUDING CONTENTS;
+CREATE TABLESPACE T_ANAIS2_DAT DATAFILE 'C:\oracle\product\10.2.0\oradata\SBDB\ANAIS2.DBF' SIZE 100M REUSE
+AUTOEXTEND ON NEXT 50M MAXSIZE UNLIMITED EXTENT MANAGEMENT LOCAL;
+
+-- DEFININDO USUÁRIO DE ESQUEMA
+DROP USER ANAIS2 CASCADE;
+CREATE USER ANAIS2 IDENTIFIED BY XXXXXX DEFAULT TABLESPACE T_ANAIS2_DAT;
+GRANT DBA TO ANAIS2;
+GRANT SELECT ON DBA_JOBS TO ANAIS2;
+GRANT ALL PRIVILEGES TO ANAIS2;
+
+-- CONECTANDO COM USUÁRIO DE ESQUEMA
+DISCONNECT;
+CONNECT ANAIS2/XXXX@SBDB;
+
+/* **********************************************************************************
+   CRIAÇÃO DE TABELAS
+*/
+
+-- TABELA ACOMPANHA
+CREATE TABLE ANAIS2."ACOMPANHA" (
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "SEQ" NUMBER (10,0),
+   "RESPONSAVEL_SEQ" NUMBER (10,0),
+   "DATA_ENVIO" DATE,
+   "ETAPA_ACOMPANHA_SEQ" NUMBER (10,0),
+   "RETORNO" NUMBER (10,0),
+   "NOTIFICA" NUMBER (10,0),
+   "RECOBRA" NUMBER (10,0),
+   "RECOBRA_QTD" NUMBER (10,0),
+   "DATA_RETORNO" DATE,
+   "STATUS_ACOMPANHA_COD" VARCHAR2 (50),
+   "TIPO" VARCHAR2 (50),
+   "OBS" CLOB,
+   "REAVALIACAO" NUMBER (10,0),
+   "ACOMP_SEQ_ANTERIOR" NUMBER (10,0),
+   "NUM_VERSAO" NUMBER (10,0),
+   "ETAPA_SEQ_ANTERIOR" NUMBER (10,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ACOMPANHA" ADD CONSTRAINT "ID_ACOMPANHA"
+PRIMARY KEY("ARTIGO_SEQ", "SEQ");
+
+COMMENT ON TABLE ANAIS2."ACOMPANHA" IS 'SUBMISS_ACOMPANHA | Registro de acompanhamento do artigo com suas diversas versões. | Acompamanhamento do Artigo';
+
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."SEQ" IS 'Sequencial do acompanhamento. | Sequencial';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."RESPONSAVEL_SEQ" IS 'Identificação do responsável. | Sequencial do Responsável';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."DATA_ENVIO" IS 'Data de envio do material para colaborador. | Data de Envio';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."ETAPA_ACOMPANHA_SEQ" IS 'Etapa de acompanhamento (substitui o tipo). | Sequencial da Etapa de Acompanhamento';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."RETORNO" IS 'Tempo que o colaborador tem para atuar em dias. | Tempo de Retorno';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."NOTIFICA" IS 'Prazo de notificação a contar da data de limite de retorno (dias negativos, cobra antes e dias positivos, cobra depois). | Prazo de Notificação';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."RECOBRA" IS 'Tempo após a primeira notificação para ocorrência da segunda, em DIAS. | Intervalo de Notificação';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."RECOBRA_QTD" IS 'Quantidade máxima de cobranças automáticas. | Quantidade de Notificações Automáticas';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."DATA_RETORNO" IS 'Data de retorno do material. | Data de Retorno';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."STATUS_ACOMPANHA_COD" IS 'Status da etapa de acompanhamento. | Status de Acompanhamento';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."TIPO" IS 'Tipo da etapa de acompanhamento. | Tipo';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."OBS" IS 'Observações sobre a etapa. | Observações';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."REAVALIACAO" IS 'Afirmativo caso o documento esteja sendo reavaliado. | Reavaliação';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."ACOMP_SEQ_ANTERIOR" IS 'Identifica o sequencial anterior do acompanhamento. | Sequencial Anterior do Acompanhamento';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."NUM_VERSAO" IS 'Identifica a versão do documento. | Número de Versão';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA"."ETAPA_SEQ_ANTERIOR" IS 'Identifica a etapa anterior. | Sequencial da Etapa Anterior';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ACOMPANHA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ARTIGO
+CREATE TABLE ANAIS2."ARTIGO" (
+   "SEQ" NUMBER (10,0),
+   "ID" VARCHAR2 (50),
+   "IDIOMA_AUTOR" VARCHAR2 (1),
+   "DATA_INICIO" DATE,
+   "DATA_SUBMISSAO" DATE,
+   "ORDEM" NUMBER (10,0),
+   "AVALIA_ESTAT" NUMBER (1,0),
+   "OBS_INTERNA" CLOB,
+   "EDITOR_RESP_SEQ" NUMBER (10,0),
+   "PARECER_A_SEQ" NUMBER (10,0),
+   "PARECER_B_SEQ" NUMBER (10,0),
+   "PARECER_C_SEQ" NUMBER (10,0),
+   "PARECER_E_SEQ" NUMBER (10,0),
+   "NUM_VERSAO_AUTOR" NUMBER (10,0),
+   "NUM_VERSAO_FINAL" NUMBER (10,0),
+   "VOLUME_NUM" NUMBER (10,0),
+   "REVISTA_ID" VARCHAR2 (10),
+   "PUBLIC_INFO" VARCHAR2 (200),
+   "INFORMA" CLOB,
+   "INFORMA_I" CLOB,
+   "INFORMA_E" CLOB,
+   "CORRESPONDENCIA" CLOB,
+   "DATA_PUBLIC" DATE,
+   "ARQUIVO" VARCHAR2 (100),
+   "ARQUIVO_I" VARCHAR2 (100),
+   "ARQUIVO_E" VARCHAR2 (100),
+   "DATA_LIBERACAO" DATE
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ARTIGO" ADD CONSTRAINT "ID_ARTIGO"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."ARTIGO" IS 'SUBMISS_ARTIGO | Artigos disponíveis para avaliação e publicação. | Artigo';
+
+COMMENT ON COLUMN ANAIS2."ARTIGO"."SEQ" IS 'Sequencial do artigo. | Sequencial';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."ID" IS 'Identificação do artigo para acompanhamento. | ID';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."IDIOMA_AUTOR" IS 'Idioma original de submissão do artigo (português, inglês ou espanhol). | Idioma';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."DATA_INICIO" IS 'Data em que o artigo é iniciado pelo autor. | Data de Início';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."DATA_SUBMISSAO" IS 'Data em que o artigo foi submetido à avaliação técnica. | Data de Submissão';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."ORDEM" IS 'Ordem para publicação do artigo. | Ordenação';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."AVALIA_ESTAT" IS 'Necessária avaliação estatística? | Avaliação da Estatística';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."OBS_INTERNA" IS 'Observações internas sobre o artigo. | Observação';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."EDITOR_RESP_SEQ" IS 'Editor responsável. | Editor';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."PARECER_A_SEQ" IS 'Parecerista A, pré-definição inicial ou indicação. | Parecerista';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."PARECER_B_SEQ" IS 'Parecerista B, pré-definição inicial ou indicação. | Parecerista';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."PARECER_C_SEQ" IS 'Parecerista C, pré-definição inicial ou indicação. | Parecerista';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."PARECER_E_SEQ" IS 'Parecerista para avaliação estatística, pré-definição inicial ou indicação. | Parecerista';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."NUM_VERSAO_AUTOR" IS 'Versão do autor. | Nº da Versão do Autor';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."NUM_VERSAO_FINAL" IS 'Versão final. | Nº da Versão Final';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."VOLUME_NUM" IS 'Volume onde foi publicado o artigo ou encaminhamento provisório. | Volume';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."REVISTA_ID" IS 'Identificação da revista onde foi publicado o artigo ou encaminhamento provisório. | Revista';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."PUBLIC_INFO" IS 'Referência de publicação (ex: "An bras Dermatol, Rio de Janeiro, 79(1):001-010, jan./fev. 2004."). | Referência de Publicação';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."INFORMA" IS 'Informações adicionais sobre o artigo. | Informação';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."INFORMA_I" IS 'Informações adicionais sobre o artigo em inglês. | Informação em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."INFORMA_E" IS 'Informações adicionais sobre o artigo em espanhol. | Informação em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."CORRESPONDENCIA" IS 'Informações sobre como se corresponder com o autor. | Correspondência';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."DATA_PUBLIC" IS 'Data da publicação, quando estiver publicado. | Data de Publicação';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."ARQUIVO" IS 'Nome do arquivo com os dados em português. | Nome do Arquivo';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."ARQUIVO_I" IS 'Nome do arquivo com os dados em inglês. | Nome do Arquivo em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."ARQUIVO_E" IS 'Nome do arquivo com os dados em espanhol. | Nome do Arquivo em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGO"."DATA_LIBERACAO" IS 'Data de liberação do artigo. | Data de Liberação';
+COMMENT ON COLUMN ANAIS2."ARTIGO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ARTIGO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ARTIGO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ARTIGO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ARTIGO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ARTIGO_RESPONSAVEL
+CREATE TABLE ANAIS2."ARTIGO_RESPONSAVEL" (
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "RESPONSAVEL_SEQ" NUMBER (10,0),
+   "ORDEM" NUMBER (10,0),
+   "CARGO_PUBLIC" CLOB,
+   "CARGO_PUBLIC_I" CLOB,
+   "CARGO_PUBLIC_E" CLOB,
+   "NOME_PUBLIC" VARCHAR2 (200)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ARTIGO_RESPONSAVEL" ADD CONSTRAINT "ID_ARTIGO_RESPONSAVEL"
+PRIMARY KEY("ARTIGO_SEQ", "RESPONSAVEL_SEQ");
+
+COMMENT ON TABLE ANAIS2."ARTIGO_RESPONSAVEL" IS 'SUBMISS_ARTIGO | Responsáveis pela produção do artigo. | Responsável Pelo Artigo';
+
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL"."RESPONSAVEL_SEQ" IS 'Identificador sequencial do responsável no sistema. | Responsável';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL"."ORDEM" IS 'Ordem de apresentação dos nomes, sendo o primeiro o autor principal. | Ordenação';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL"."CARGO_PUBLIC" IS 'Cargo público ou qualificação padrão do responsável. | Cargo';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL"."CARGO_PUBLIC_I" IS 'Cargo público ou qualificação padrão do responsável em inglês. | Cargo em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL"."CARGO_PUBLIC_E" IS 'Cargo público ou qualificação padrão do responsável em espanhol. | Cargo em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL"."NOME_PUBLIC" IS 'Nome do autor publicado. | Nome';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ARTIGO_RESPONSAVEL".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ARTIGOV
+CREATE TABLE ANAIS2."ARTIGOV" (
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "NUM_VERSAO" NUMBER (10,0),
+   "DATA_CRIACAO" DATE,
+   "RESPONSAVEL_SEQ" NUMBER (10,0),
+   "TEMA_SEQ" NUMBER (10,0),
+   "SECAO_SEQ" NUMBER (10,0),
+   "TITULO" CLOB,
+   "TITULO_I" CLOB,
+   "TITULO_E" CLOB,
+   "RESUMO" CLOB,
+   "RESUMO_I" CLOB,
+   "RESUMO_E" CLOB,
+   "CONTEUDO" CLOB,
+   "CONTEUDO_I" CLOB,
+   "CONTEUDO_E" CLOB,
+   "DATA_CONCLUSAO" DATE,
+   "OBS_INTERNA" CLOB,
+   "ARTIGO_DECODE" CLOB
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ARTIGOV" ADD CONSTRAINT "ID_ARTIGOV"
+PRIMARY KEY("ARTIGO_SEQ", "NUM_VERSAO");
+
+COMMENT ON TABLE ANAIS2."ARTIGOV" IS 'SUBMISS_ACOMPANHA | Armazena versão dos artigos conforme forem sugeridas as colaborações. | Versão do Artigo';
+
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."NUM_VERSAO" IS 'Versão. | Versão';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."DATA_CRIACAO" IS 'Data de cadastro. | Data de Cadastro';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."RESPONSAVEL_SEQ" IS 'Identificador sequencial do responsável no sistema. | Responsável';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."TEMA_SEQ" IS 'Tema. | Tema';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."SECAO_SEQ" IS 'Sessão. | Sessão';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."TITULO" IS 'Título. | Título';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."TITULO_I" IS 'Título em inglês. | Título em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."TITULO_E" IS 'Título em espanhol. | Título em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."RESUMO" IS 'Resumo. | Resumo';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."RESUMO_I" IS 'Resumo em inglês. | Resumo em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."RESUMO_E" IS 'Resumo em espanhol. | Resumo em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."CONTEUDO" IS 'Conteúdo. | Conteúdo';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."CONTEUDO_I" IS 'Conteúdo em inglês. | Conteúdo em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."CONTEUDO_E" IS 'Conteúdo em espanhol. | Conteúdo em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."DATA_CONCLUSAO" IS 'Data da conclusão. | Data de Conclusão';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."OBS_INTERNA" IS 'Observações internas sobre o artigo. | Observação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV"."ARTIGO_DECODE" IS 'Nome do arquivo. | Nome do Arquivo';
+COMMENT ON COLUMN ANAIS2."ARTIGOV".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ARTIGOV".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ARTIGOV".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ARTIGOV_COMENTARIO
+CREATE TABLE ANAIS2."ARTIGOV_COMENTARIO" (
+   "SEQ" NUMBER (10,0),
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "TEXTO" CLOB,
+   "NUM_VERSAO" NUMBER (10,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ARTIGOV_COMENTARIO" ADD CONSTRAINT "ID_ARTIGOV_COMENTARIO"
+PRIMARY KEY("ARTIGO_SEQ", "NUM_VERSAO", "SEQ");
+
+COMMENT ON TABLE ANAIS2."ARTIGOV_COMENTARIO" IS 'ANAIS2 | Comentários para encaminhamento do artigo. | Comentário sobre o Artigo';
+
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO"."TEXTO" IS 'Texto. | Texto';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO"."NUM_VERSAO" IS 'Versão. | Versão';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_COMENTARIO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ARTIGOV_MATERIAL
+CREATE TABLE ANAIS2."ARTIGOV_MATERIAL" (
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "NUM_VERSAO" NUMBER (10,0),
+   "SEQ" NUMBER (10,0),
+   "MATERIAL_SEQ" NUMBER (10,0),
+   "PRETO_BRANCO" NUMBER (10,0),
+   "COLORIDO" NUMBER (10,0),
+   "QUANTIDADE" NUMBER (10,0),
+   "OBS" CLOB,
+   "ID" VARCHAR2 (10),
+   "TITULO" VARCHAR2 (30),
+   "TITULO_I" VARCHAR2 (30),
+   "TITULO_E" VARCHAR2 (30),
+   "LEGENDA" CLOB,
+   "LEGENDA_I" CLOB,
+   "LEGENDA_E" CLOB,
+   "ARQUIVO" VARCHAR2 (100),
+   "ARQUIVO_I" VARCHAR2 (100),
+   "ARQUIVO_E" VARCHAR2 (100),
+   "ORDEM" NUMBER (10,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ARTIGOV_MATERIAL" ADD CONSTRAINT "ID_ARTIGOV_MATERIAL"
+PRIMARY KEY("ARTIGO_SEQ", "NUM_VERSAO", "SEQ");
+
+COMMENT ON TABLE ANAIS2."ARTIGOV_MATERIAL" IS 'SUBMISS_ACOMPANHA | Armazena material conforme a versão do artigo. | Material do Artigo';
+
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."NUM_VERSAO" IS 'Versão. | Versão';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."MATERIAL_SEQ" IS 'Material. | Material';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."PRETO_BRANCO" IS 'Preto e Branco. | Preto e Branco';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."COLORIDO" IS 'Colorido. | Colorido';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."QUANTIDADE" IS 'Quantidade. | Quantidade';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."OBS" IS 'Observação. | Observação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."ID" IS 'Identificação do material. | ID';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."TITULO" IS 'Título. | Título';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."TITULO_I" IS 'Título em inglês. | Título em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."TITULO_E" IS 'Título em espanhol. | Título em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."LEGENDA" IS 'Legenda. | Legenda';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."LEGENDA_I" IS 'Legenda em inglês. | Legenda em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."LEGENDA_E" IS 'Legenda em espanhol. | Legenda em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."ARQUIVO" IS 'Nome do arquivo de origem. | Nome do Arquivo';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."ARQUIVO_I" IS 'Nome do arquivo com os dados em inglês. | Nome do Arquivo em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."ARQUIVO_E" IS 'Nome do arquivo com os dados em espanhol. | Nome do Arquivo em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL"."ORDEM" IS 'Ordenação. | Ordenação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_MATERIAL".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ARTIGOV_PALAVRA
+CREATE TABLE ANAIS2."ARTIGOV_PALAVRA" (
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "NUM_VERSAO" NUMBER (10,0),
+   "SEQ" NUMBER (10,0),
+   "DESCRITOR_SEQ" NUMBER (10,0),
+   "QUALIFICADOR_SEQ" NUMBER (10,0),
+   "PALAVRA_DEF" VARCHAR2 (150),
+   "PALAVRA_DEF_I" VARCHAR2 (150),
+   "PALAVRA_DEF_E" VARCHAR2 (150)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ARTIGOV_PALAVRA" ADD CONSTRAINT "ID_ARTIGOV_PALAVRA"
+PRIMARY KEY("ARTIGO_SEQ", "NUM_VERSAO", "SEQ");
+
+COMMENT ON TABLE ANAIS2."ARTIGOV_PALAVRA" IS 'SUBMISS_ACOMPANHA | Palavras referente à versão do artigo. | Palavra referente ao Aritgo';
+
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA"."NUM_VERSAO" IS 'Versão. | Versão';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA"."DESCRITOR_SEQ" IS 'Descritores. | Descritor';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA"."QUALIFICADOR_SEQ" IS 'Qualificação. | Qualificação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA"."PALAVRA_DEF" IS 'Palavra chave, conforme padronização. | Palavra';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA"."PALAVRA_DEF_I" IS 'Palavra chave, conforme padronização. | Palavra em Inglês';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA"."PALAVRA_DEF_E" IS 'Palavra chave, conforme padronização. | Palavra em Espanhol';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_PALAVRA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ARTIGOV_REF
+CREATE TABLE ANAIS2."ARTIGOV_REF" (
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "NUM_VERSAO" NUMBER (10,0),
+   "SEQ" NUMBER (10,0),
+   "DESCRICAO" CLOB
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ARTIGOV_REF" ADD CONSTRAINT "ID_ARTIGOV_REF"
+PRIMARY KEY("ARTIGO_SEQ", "NUM_VERSAO", "SEQ");
+
+COMMENT ON TABLE ANAIS2."ARTIGOV_REF" IS 'SUBMISS_ACOMPANHA | Referências relacionadas à versão do artigo. | Referência do Artigo';
+
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF"."NUM_VERSAO" IS 'Versão. | Versão';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF"."DESCRICAO" IS 'Descrição. | Descrição';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ARTIGOV_REF".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ASSINATURA_PF
+CREATE TABLE ANAIS2."ASSINATURA_PF" (
+   "PF_ID" NUMBER (5,0),
+   "NOME" VARCHAR2 (255),
+   "ENDERECO" VARCHAR2 (255),
+   "CEP" VARCHAR2 (45),
+   "CIDADE" VARCHAR2 (45),
+   "ESTADO" VARCHAR2 (2),
+   "PAIS" VARCHAR2 (45),
+   "COMPLEMENTO" VARCHAR2 (255),
+   "TEL_RES" VARCHAR2 (45),
+   "TEL_COM" VARCHAR2 (45),
+   "TEL_CEL" VARCHAR2 (45),
+   "FAX" VARCHAR2 (45),
+   "EMAIL_PRINCIPAL" VARCHAR2 (255),
+   "EMAIL_OPCIONAL" VARCHAR2 (255),
+   "SITE" VARCHAR2 (255),
+   "CATEGORIA" VARCHAR2 (45),
+   "PROFISSAO" VARCHAR2 (45),
+   "CARGO" VARCHAR2 (45),
+   "ATUACAO" VARCHAR2 (45),
+   "INSTITUICAO" VARCHAR2 (45),
+   "AREA" VARCHAR2 (45),
+   "FORMACAO" VARCHAR2 (45),
+   "ESPECIALIZACAO" VARCHAR2 (45),
+   "UNIVERSIDADE" VARCHAR2 (45),
+   "SUMARIO" NUMBER (5,0),
+   "CONHECEU" VARCHAR2 (1000),
+   "MOTIVO" VARCHAR2 (1000),
+   "PAGAMENTO" VARCHAR2 (255),
+   "TIPO_BOLETO" NUMBER (1,0),
+   "NUMERO_BOLETO" NUMBER (14,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ASSINATURA_PF" ADD CONSTRAINT "ID_ASSINATURA_PF"
+PRIMARY KEY("PF_ID");
+
+COMMENT ON TABLE ANAIS2."ASSINATURA_PF" IS 'ANAIS2 | Registro de assinatura para pessoa física. | Assinatura Pessoa Física';
+
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."PF_ID" IS 'Pessoal Física. | Pessoal Física';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."NOME" IS 'Nome. | Nome';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."ENDERECO" IS 'Endereço completo, tipo (rua, av.), logradouro e número. | Endereço Completo';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."CEP" IS 'CEP designado para o logradouro. | CEP';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."CIDADE" IS 'Cidade. | Cidade';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."ESTADO" IS 'Estado. | Estado';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."PAIS" IS 'País. | País';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."COMPLEMENTO" IS 'Complemento. | Complemento';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."TEL_RES" IS 'Telefone residencial. | Telefone Residencial';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."TEL_COM" IS 'Telefone comercial. | Telefone Comercial';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."TEL_CEL" IS 'Celular. | Telefone Celular';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."FAX" IS 'Fax. | Fax';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."EMAIL_PRINCIPAL" IS 'E-mail. | E-mail Principal';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."EMAIL_OPCIONAL" IS 'E-mail opcional. | E-mail Opcional';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."SITE" IS 'Site. | Site';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."CATEGORIA" IS 'Categoria. | Categoria';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."PROFISSAO" IS 'Profissão. | Profissão';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."CARGO" IS 'Cargo. | Cargo';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."ATUACAO" IS 'Assinatura. | Assinatura';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."INSTITUICAO" IS 'Nome da instituição. | Instituição';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."AREA" IS 'Assinatura. | Assinatura';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."FORMACAO" IS 'Formação. | Formação';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."ESPECIALIZACAO" IS 'Especialização. | Especialização';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."UNIVERSIDADE" IS 'Nome da universidade. | Universidade';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."SUMARIO" IS 'Sumário. | Sumário';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."CONHECEU" IS 'Conheceu. | Conheceu';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."MOTIVO" IS 'Motivo. | Motivo';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."PAGAMENTO" IS 'Pagamento. | Pagamento';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."TIPO_BOLETO" IS 'Tipo de boleto. | Tipo';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF"."NUMERO_BOLETO" IS 'Número do boleto. | Número do Boleto';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PF".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ASSINATURA_PJ
+CREATE TABLE ANAIS2."ASSINATURA_PJ" (
+   "PJ_ID" NUMBER (5,0),
+   "INSTITUICAO" VARCHAR2 (255),
+   "SETOR" VARCHAR2 (45),
+   "NOME" VARCHAR2 (255),
+   "ENDERECO" VARCHAR2 (255),
+   "CEP" VARCHAR2 (45),
+   "CIDADE" VARCHAR2 (45),
+   "ESTADO" VARCHAR2 (2),
+   "PAIS" VARCHAR2 (45),
+   "TEL_COM" VARCHAR2 (45),
+   "FAX" VARCHAR2 (45),
+   "EMAIL_PRINCIPAL" VARCHAR2 (255),
+   "EMAIL_OPCIONAL" VARCHAR2 (255),
+   "SITE" VARCHAR2 (255),
+   "SUMARIO" NUMBER (5,0),
+   "CONHECEU" VARCHAR2 (1000),
+   "MOTIVO" VARCHAR2 (1000),
+   "PAGAMENTO" VARCHAR2 (255),
+   "COMPLEMENTO" VARCHAR2 (255),
+   "TIPO_BOLETO" NUMBER (1,0),
+   "NUMERO_BOLETO" NUMBER (14,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ASSINATURA_PJ" ADD CONSTRAINT "ID_ASSINATURA_PJ"
+PRIMARY KEY("PJ_ID");
+
+COMMENT ON TABLE ANAIS2."ASSINATURA_PJ" IS 'ANAIS2 | Registro de assinatura para pessoa jurídica. | Assinatura Pessoa Jurídica';
+
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."PJ_ID" IS 'Pessoal Jurídica. | Pessoal Jurídica';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."INSTITUICAO" IS 'Nome da instituição. | Instituição';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."SETOR" IS 'Setor. | Setor';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."NOME" IS 'Nome. | Nome';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."ENDERECO" IS 'Endereço completo, tipo (rua, av.), logradouro e número. | Endereço Completo';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."CEP" IS 'CEP designado para o logradouro. | CEP';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."CIDADE" IS 'Cidade. | Cidade';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."ESTADO" IS 'Estado. | Estado';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."PAIS" IS 'País. | País';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."TEL_COM" IS 'Telefone Comercial. | Telefone';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."FAX" IS 'Fax. | Fax';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."EMAIL_PRINCIPAL" IS 'E-mail. | E-mail Principal';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."EMAIL_OPCIONAL" IS 'E-mail opcional. | E-mail Opcional';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."SITE" IS 'Site. | Site';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."SUMARIO" IS 'Sumário. | Sumário';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."CONHECEU" IS 'Conheceu. | Conheceu';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."MOTIVO" IS 'Motivo. | Motivo';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."PAGAMENTO" IS 'Pagamento. | Pagamento';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."COMPLEMENTO" IS 'Complemento. | Complemento';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."TIPO_BOLETO" IS 'Tipo de boleto. | Tipo';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ"."NUMERO_BOLETO" IS 'Número do boleto. | Número do Boleto';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ASSINATURA_PJ".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA AVISO
+CREATE TABLE ANAIS2."AVISO" (
+   "SEQ" NUMBER (10,0),
+   "DATA_APRESENTA" DATE,
+   "DATA_APRES_ATE" DATE,
+   "TEXTO" CLOB,
+   "AUTOR" NUMBER (1,0),
+   "PARECERISTA" NUMBER (1,0),
+   "REVISOR" NUMBER (1,0),
+   "TRADUTOR" NUMBER (1,0),
+   "EDITOR" NUMBER (1,0),
+   "OPERADOR" NUMBER (1,0),
+   "ESTATISTICO" NUMBER (1,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."AVISO" ADD CONSTRAINT "ID_AVISO"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."AVISO" IS 'REGISTRO | Quadro de aviso dos anais para colaboradores. | Aviso';
+
+COMMENT ON COLUMN ANAIS2."AVISO"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."AVISO"."DATA_APRESENTA" IS 'Data apresentação. | Data de Apresentação';
+COMMENT ON COLUMN ANAIS2."AVISO"."DATA_APRES_ATE" IS 'Data limite de apresentação. | Data Limite de Apresentação';
+COMMENT ON COLUMN ANAIS2."AVISO"."TEXTO" IS 'Texto. | Texto';
+COMMENT ON COLUMN ANAIS2."AVISO"."AUTOR" IS 'Nome do autor. | Autor';
+COMMENT ON COLUMN ANAIS2."AVISO"."PARECERISTA" IS 'Parecerista. | Parecerista';
+COMMENT ON COLUMN ANAIS2."AVISO"."REVISOR" IS 'Revisor. | Revisor';
+COMMENT ON COLUMN ANAIS2."AVISO"."TRADUTOR" IS 'Tradutor. | Tradutor';
+COMMENT ON COLUMN ANAIS2."AVISO"."EDITOR" IS 'Nome do editor. | Editor';
+COMMENT ON COLUMN ANAIS2."AVISO"."OPERADOR" IS 'Operador. | Operador';
+COMMENT ON COLUMN ANAIS2."AVISO"."ESTATISTICO" IS 'Dados estatísticos. | Estatístico';
+COMMENT ON COLUMN ANAIS2."AVISO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."AVISO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."AVISO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."AVISO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."AVISO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."AVISO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."AVISO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA DESCRITOR
+CREATE TABLE ANAIS2."DESCRITOR" (
+   "SEQ" NUMBER (10,0),
+   "PALAVRA" VARCHAR2 (150),
+   "PALAVRA_I" VARCHAR2 (150),
+   "PALAVRA_E" VARCHAR2 (150),
+   "INCLUSAO" DATE,
+   "CANCEL" DATE
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."DESCRITOR" ADD CONSTRAINT "ID_DESCRITOR"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."DESCRITOR" IS 'SUBMISS_DESCRIT | Opções de descritores disponíveis para vínculo. | Descritor';
+
+COMMENT ON COLUMN ANAIS2."DESCRITOR"."SEQ" IS 'Sequencial de cadastro dos descritores. | Sequencial';
+COMMENT ON COLUMN ANAIS2."DESCRITOR"."PALAVRA" IS 'Palavra chave, conforme padronização. | Palavra';
+COMMENT ON COLUMN ANAIS2."DESCRITOR"."PALAVRA_I" IS 'Palavra chave, conforme padronização internacional no idioma inglês. | Palavra em Inglês';
+COMMENT ON COLUMN ANAIS2."DESCRITOR"."PALAVRA_E" IS 'Palavra chave, conforme padronização internacional no idioma espanhol. | Palavra em Espanhol';
+COMMENT ON COLUMN ANAIS2."DESCRITOR"."INCLUSAO" IS 'Data de inclusão do descritor na base da SBD. | Data de Inclusão';
+COMMENT ON COLUMN ANAIS2."DESCRITOR"."CANCEL" IS 'Data de cancelamento daquele descritor tornando-o indisponível. | Data de Cancelamento';
+COMMENT ON COLUMN ANAIS2."DESCRITOR".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."DESCRITOR".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."DESCRITOR".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."DESCRITOR".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."DESCRITOR".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."DESCRITOR".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."DESCRITOR".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA DESCRITOR_QUALIF
+CREATE TABLE ANAIS2."DESCRITOR_QUALIF" (
+   "DESCRITOR_SEQ" NUMBER (10,0),
+   "QUALIFICADOR_SEQ" NUMBER (10,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."DESCRITOR_QUALIF" ADD CONSTRAINT "ID_DESCRITOR_QUALIF"
+PRIMARY KEY("DESCRITOR_SEQ", "QUALIFICADOR_SEQ");
+
+COMMENT ON TABLE ANAIS2."DESCRITOR_QUALIF" IS 'SUBMISS_DESCRIT | Vínculo entre descritores e qualificadores possíveis para aquele descritor. | Qualificação do Descritor';
+
+COMMENT ON COLUMN ANAIS2."DESCRITOR_QUALIF"."DESCRITOR_SEQ" IS 'Sequencial de cadastro dos descritores. | Descritor';
+COMMENT ON COLUMN ANAIS2."DESCRITOR_QUALIF"."QUALIFICADOR_SEQ" IS 'Sequencial de cadastro do qualificador. | Qualificação';
+COMMENT ON COLUMN ANAIS2."DESCRITOR_QUALIF".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."DESCRITOR_QUALIF".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."DESCRITOR_QUALIF".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."DESCRITOR_QUALIF".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."DESCRITOR_QUALIF".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."DESCRITOR_QUALIF".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."DESCRITOR_QUALIF".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ETAPA_ACOMPANHA
+CREATE TABLE ANAIS2."ETAPA_ACOMPANHA" (
+   "SEQ" NUMBER (10,0),
+   "AUTOR" NUMBER (1,0),
+   "PARECERISTA" NUMBER (1,0),
+   "REVISOR" NUMBER (1,0),
+   "TRADUTOR" NUMBER (1,0),
+   "EDITOR" NUMBER (1,0),
+   "OPERADOR" NUMBER (1,0),
+   "ETAPA" VARCHAR2 (50),
+   "RETORNO" NUMBER (10,0),
+   "NOTIFICA" NUMBER (10,0),
+   "RECOBRA" NUMBER (10,0),
+   "RECOBRA_QTD" NUMBER (10,0),
+   "ESTATISTICO" NUMBER (1,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ETAPA_ACOMPANHA" ADD CONSTRAINT "ID_ETAPA_ACOMPANHA"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."ETAPA_ACOMPANHA" IS 'SUBMISS_ACOMPANHA | Cadastro de etapas de acompanhamento. | Acompanhamento da Etapa';
+
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."AUTOR" IS 'Autor atua nesta etapa de acompanhamento. | Autor';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."PARECERISTA" IS 'Parecerista atua nesta etapa de acompanhamento. | Parecerista';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."REVISOR" IS 'Revisor atua nesta etapa de acompanhamento. | Revisor';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."TRADUTOR" IS 'Tradutor atua nesta etapa de acompanhamento. | Tradutor';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."EDITOR" IS 'Editor atua nesta etapa de acompanhamento. | Editor';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."OPERADOR" IS 'Operador atua nesta etapa de acompanhamento. | Operador';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."ETAPA" IS 'Ação praticada. | Etapa';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."RETORNO" IS 'Tempo que o colaborador tem para atuar em dias. | Retorno';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."NOTIFICA" IS 'Prazo de notificação a contar da data de limite de retorno (dias negativos, cobra antes e dias positivos, cobra depois). | Notifica';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."RECOBRA" IS 'Tempo após a primeira notificação para ocorrência da segunda, em DIAS. | Recobra';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."RECOBRA_QTD" IS 'Quantidade máxima de cobranças automáticas. | Recobra';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA"."ESTATISTICO" IS 'Dados estatísticos. | Estatístico';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ETAPA_ACOMPANHA_DESTINO
+CREATE TABLE ANAIS2."ETAPA_ACOMPANHA_DESTINO" (
+   "ETAPA_ACOMPANHA_SEQ" NUMBER (10,0),
+   "ETAPA_DESTINO_SEQ" NUMBER (10,0),
+   "ORDEM" NUMBER (10,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ETAPA_ACOMPANHA_DESTINO" ADD CONSTRAINT "ID_ETAPA_ACOMPANHA_DESTINO"
+PRIMARY KEY("ETAPA_ACOMPANHA_SEQ", "ETAPA_DESTINO_SEQ");
+
+COMMENT ON TABLE ANAIS2."ETAPA_ACOMPANHA_DESTINO" IS 'ACOMPANHAMENTO | Destinos possíveis das etapas de acompanhamento. | Destino do Acompanhamento da Etapa';
+
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO"."ETAPA_ACOMPANHA_SEQ" IS 'Etapa de acompanhamento para definição dos prazos de notificação automaticamente. | Etapa de Acompanhamento';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO"."ETAPA_DESTINO_SEQ" IS 'Etapa de destino. | Etapa de Destino';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO"."ORDEM" IS 'Ordenação. | Ordenação';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ETAPA_ACOMPANHA_DESTINO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA ETAPA_CHECKLIST
+CREATE TABLE ANAIS2."ETAPA_CHECKLIST" (
+   "ETAPA_ACOMPANHA_SEQ" NUMBER (10,0),
+   "SEQ" NUMBER (10,0),
+   "TOPICO" VARCHAR2 (100),
+   "DETALHES" CLOB
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."ETAPA_CHECKLIST" ADD CONSTRAINT "ID_ETAPA_CHECKLIST"
+PRIMARY KEY("ETAPA_ACOMPANHA_SEQ", "SEQ");
+
+COMMENT ON TABLE ANAIS2."ETAPA_CHECKLIST" IS 'SUBMISS_ACOMPANHA | Etapas de checklist. | Checklist das Etapas';
+
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST"."ETAPA_ACOMPANHA_SEQ" IS 'Etapa de acompanhamento para definição dos prazos de notificação automaticamente. | Etapa';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST"."SEQ" IS 'Ordem de numeração dos tópicos a serem seguidos pelo pessoal de colaboração. | Sequencial';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST"."TOPICO" IS 'Tópico a ser contemplado pelo colaborador. | Tópico';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST"."DETALHES" IS 'Mais detalhes sobre o tópico. | Detalhes';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."ETAPA_CHECKLIST".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA IDIOMA
+CREATE TABLE ANAIS2."IDIOMA" (
+   "DESCRICAO" VARCHAR2 (20),
+   "COD" VARCHAR2 (1)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."IDIOMA" ADD CONSTRAINT "ID_IDIOMA"
+PRIMARY KEY("COD");
+
+COMMENT ON TABLE ANAIS2."IDIOMA" IS 'SUBMISS_CADASTRO | Cadastro de idiomas do sistema. | Idioma';
+
+COMMENT ON COLUMN ANAIS2."IDIOMA"."DESCRICAO" IS 'Descrição. | Descrição';
+COMMENT ON COLUMN ANAIS2."IDIOMA"."COD" IS 'Letra representando o idioma. | Idioma';
+COMMENT ON COLUMN ANAIS2."IDIOMA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."IDIOMA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."IDIOMA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."IDIOMA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."IDIOMA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."IDIOMA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."IDIOMA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA LOG
+CREATE TABLE ANAIS2."LOG" (
+   "SEQ" NUMBER (10,0),
+   "TIPO" VARCHAR2 (20),
+   "MOMENTO" DATE,
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "RESPONSAVEL_SEQ" NUMBER (10,0),
+   "REMETENTE_SEQ" NUMBER (10,0),
+   "MSG_PADRAO" NUMBER (10,0),
+   "COMPLEMENTO" CLOB,
+   "MEIO" VARCHAR2 (20),
+   "DATA_ENVIO" DATE,
+   "DATA_CONFIRM" DATE
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."LOG" ADD CONSTRAINT "ID_LOG"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."LOG" IS 'REGISTRO | Tabela que registra ocorrências dos seus usuários. | Log';
+
+COMMENT ON COLUMN ANAIS2."LOG"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."LOG"."TIPO" IS 'Tipo. | Tipo';
+COMMENT ON COLUMN ANAIS2."LOG"."MOMENTO" IS 'Data de cadastro. | Data de Cadastro';
+COMMENT ON COLUMN ANAIS2."LOG"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."LOG"."RESPONSAVEL_SEQ" IS 'Identificador sequencial do responsável no sistema. | Responsável';
+COMMENT ON COLUMN ANAIS2."LOG"."REMETENTE_SEQ" IS 'Nome do remetente. | Remetente';
+COMMENT ON COLUMN ANAIS2."LOG"."MSG_PADRAO" IS 'Mensagem padrão. | Mensagem';
+COMMENT ON COLUMN ANAIS2."LOG"."COMPLEMENTO" IS 'Complemento. | Complemento';
+COMMENT ON COLUMN ANAIS2."LOG"."MEIO" IS 'Meio. | Meio';
+COMMENT ON COLUMN ANAIS2."LOG"."DATA_ENVIO" IS 'Data de envio. | Data de Envio';
+COMMENT ON COLUMN ANAIS2."LOG"."DATA_CONFIRM" IS 'Data de confirmação. | Data de Confirmação';
+COMMENT ON COLUMN ANAIS2."LOG".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."LOG".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."LOG".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."LOG".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."LOG".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."LOG".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."LOG".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA MATERIAL
+CREATE TABLE ANAIS2."MATERIAL" (
+   "SEQ" NUMBER (10,0),
+   "COD" VARCHAR2 (50),
+   "NOME" VARCHAR2 (100),
+   "NOME_I" VARCHAR2 (100),
+   "NOME_E" VARCHAR2 (100),
+   "CANCEL" DATE
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."MATERIAL" ADD CONSTRAINT "ID_MATERIAL"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."MATERIAL" IS 'SUBMISS_CADASTRO | Tipo de material. | Material';
+
+COMMENT ON COLUMN ANAIS2."MATERIAL"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."MATERIAL"."COD" IS 'Sequencial do material. | ID do Material';
+COMMENT ON COLUMN ANAIS2."MATERIAL"."NOME" IS 'Nome do material. | Nome do Material';
+COMMENT ON COLUMN ANAIS2."MATERIAL"."NOME_I" IS 'Nome do material em inglês. | Nome em Inglês';
+COMMENT ON COLUMN ANAIS2."MATERIAL"."NOME_E" IS 'Nome do material em espanhol. | Nome em Espanhol';
+COMMENT ON COLUMN ANAIS2."MATERIAL"."CANCEL" IS 'Data de Cancelamento. | Data de Cancelamento';
+COMMENT ON COLUMN ANAIS2."MATERIAL".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."MATERIAL".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."MATERIAL".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."MATERIAL".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."MATERIAL".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."MATERIAL".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."MATERIAL".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA MSG_PADRAO
+CREATE TABLE ANAIS2."MSG_PADRAO" (
+   "SEQ" NUMBER (10,0),
+   "MSG" CLOB,
+   "MSG_I" CLOB,
+   "MSG_E" CLOB
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."MSG_PADRAO" ADD CONSTRAINT "ID_MSG_PADRAO"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."MSG_PADRAO" IS 'REGISTRO | Mensagem padrão ou formato a ser enviado ao colaborador. | Mensagem Padrão';
+
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO"."MSG" IS 'Mensagem. | Mensagem';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO"."MSG_I" IS 'Mensagem em inglês. | Mensagem em Inglês';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO"."MSG_E" IS 'Mensagem em espanhol. | Mensagem em Espanhol';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."MSG_PADRAO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA PAIS
+CREATE TABLE ANAIS2."PAIS" (
+   "SEQ" NUMBER (10,0),
+   "NOME" VARCHAR2 (50),
+   "NOME_I" VARCHAR2 (50),
+   "NOME_E" VARCHAR2 (50)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."PAIS" ADD CONSTRAINT "ID_PAIS"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."PAIS" IS 'SUBMISS_CADASTRO | Cadastro de países do sistema. | País';
+
+COMMENT ON COLUMN ANAIS2."PAIS"."SEQ" IS 'Sequencial. | Sequencial';
+COMMENT ON COLUMN ANAIS2."PAIS"."NOME" IS 'Nome do país. | Nome';
+COMMENT ON COLUMN ANAIS2."PAIS"."NOME_I" IS 'Nome do país em inglês. | Nome em Inglês';
+COMMENT ON COLUMN ANAIS2."PAIS"."NOME_E" IS 'Nome do país em espanhol. | Nome em Espanhol';
+COMMENT ON COLUMN ANAIS2."PAIS".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."PAIS".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."PAIS".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."PAIS".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."PAIS".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."PAIS".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."PAIS".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA QUALIFICADOR
+CREATE TABLE ANAIS2."QUALIFICADOR" (
+   "SEQ" NUMBER (10,0),
+   "PALAVRA" VARCHAR2 (150),
+   "PALAVRA_I" VARCHAR2 (150),
+   "PALAVRA_E" VARCHAR2 (150),
+   "INCLUSAO" DATE,
+   "CANCEL" DATE
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."QUALIFICADOR" ADD CONSTRAINT "ID_QUALIFICADOR"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."QUALIFICADOR" IS 'SUBMISS_DESCRIT | Relação de qualificadores disponíveis para vínculo. | Qualificador';
+
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR"."SEQ" IS 'Sequencial de cadastro do qualificador. | Sequencial';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR"."PALAVRA" IS 'Palavra chave, conforme padronização. | Palavra';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR"."PALAVRA_I" IS 'Palavra chave, conforme padronização internacional no idioma inglês. | Palavra em Inglês';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR"."PALAVRA_E" IS 'Palavra chave, conforme padronização internacional no idioma espanhol. | Palavra em Espanhol';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR"."INCLUSAO" IS 'Data de inclusão do qualificador no cadastro da SBD. | Data de Inclusão';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR"."CANCEL" IS 'Data de cancelamento a partir da qual o qualificador não é mais válido. | Data de Cancelamento';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."QUALIFICADOR".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA QUESTAO
+CREATE TABLE ANAIS2."QUESTAO" (
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "SEQ" NUMBER (10,0),
+   "ENUNCIADO" CLOB,
+   "ENUNCIADO_I" CLOB,
+   "ENUNCIADO_E" CLOB,
+   "GABARITO" VARCHAR2 (1)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."QUESTAO" ADD CONSTRAINT "ID_QUESTAO"
+PRIMARY KEY("ARTIGO_SEQ", "SEQ");
+
+COMMENT ON TABLE ANAIS2."QUESTAO" IS 'QUESTIONÁRIO | Questões do questionário publicado em um determinado artigo. | Questão';
+
+COMMENT ON COLUMN ANAIS2."QUESTAO"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."QUESTAO"."SEQ" IS 'Sequencial da questão no artigo. | Sequencial';
+COMMENT ON COLUMN ANAIS2."QUESTAO"."ENUNCIADO" IS 'Enunciado da questão. | Enunciado';
+COMMENT ON COLUMN ANAIS2."QUESTAO"."ENUNCIADO_I" IS 'Enunciado da questão em inglês. | Enunciado em Inglês';
+COMMENT ON COLUMN ANAIS2."QUESTAO"."ENUNCIADO_E" IS 'Enunciado da questão em espanhol. | Enunciado em Espanhol';
+COMMENT ON COLUMN ANAIS2."QUESTAO"."GABARITO" IS 'Letra da resposta. | Gabarito';
+COMMENT ON COLUMN ANAIS2."QUESTAO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."QUESTAO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."QUESTAO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."QUESTAO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."QUESTAO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."QUESTAO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."QUESTAO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA QUESTAO_RESPOSTA
+CREATE TABLE ANAIS2."QUESTAO_RESPOSTA" (
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "QUESTAO_SEQ" NUMBER (10,0),
+   "LETRA" VARCHAR2 (1),
+   "RESPOSTA" CLOB,
+   "RESPOSTA_I" CLOB,
+   "RESPOSTA_E" CLOB
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."QUESTAO_RESPOSTA" ADD CONSTRAINT "ID_QUESTAO_RESPOSTA"
+PRIMARY KEY("ARTIGO_SEQ", "QUESTAO_SEQ", "LETRA");
+
+COMMENT ON TABLE ANAIS2."QUESTAO_RESPOSTA" IS 'QUESTIONÁRIO | Respostas para as questões. | Resposta da Questão';
+
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA"."ARTIGO_SEQ" IS 'Nome do Artigo. | Artigo';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA"."QUESTAO_SEQ" IS 'Sequencial da questão no artigo. | Questão';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA"."LETRA" IS 'Letra da resposta. | Letra';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA"."RESPOSTA" IS 'Resposta. | Resposta';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA"."RESPOSTA_I" IS 'Conteúdo da resposta em inglês. | Resposta em Inglês';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA"."RESPOSTA_E" IS 'Conteúdo da resposta em espanhol. | Resposta em Espanhol';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."QUESTAO_RESPOSTA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA QUESTIONARIO_RESPOSTA
+CREATE TABLE ANAIS2."QUESTIONARIO_RESPOSTA" (
+   "ARTIGO_SEQ" NUMBER (10,0),
+   "CRM" VARCHAR2 (12),
+   "CRM_ESTADO" VARCHAR2 (2),
+   "GABARITO" VARCHAR2 (20),
+   "DATA_RESPOSTA" DATE
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."QUESTIONARIO_RESPOSTA" ADD CONSTRAINT "ID_QUESTIONARIO_RESPOSTA"
+PRIMARY KEY("ARTIGO_SEQ", "CRM", "CRM_ESTADO");
+
+COMMENT ON TABLE ANAIS2."QUESTIONARIO_RESPOSTA" IS 'ANAIS2 | Associados que responderam ao questionário. | Resposta do Questionário';
+
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA"."ARTIGO_SEQ" IS 'Artigo referente ao questionario respondido. | Sequencial';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA"."CRM" IS 'Registro do CRM. | CRM';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA"."CRM_ESTADO" IS 'Estado emissor do CRM. | Estado do CRM';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA"."GABARITO" IS 'Lista as letras references as respostas dadas pelo usuário. | Gabarito';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA"."DATA_RESPOSTA" IS 'Data na qual o usuário respondeu o questionário. | Data de Resposta';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."QUESTIONARIO_RESPOSTA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA RESPONSAVEL
+CREATE TABLE ANAIS2."RESPONSAVEL" (
+   "SEQ" NUMBER (10,0),
+   "MATRICULA" NUMBER (5,0),
+   "TRATAMENTO" VARCHAR2 (10),
+   "NOME" VARCHAR2 (200),
+   "SEXO" VARCHAR2 (1),
+   "CARGO" CLOB,
+   "CARGO_I" CLOB,
+   "CARGO_E" CLOB,
+   "ENDERECO" VARCHAR2 (200),
+   "BAIRRO" VARCHAR2 (100),
+   "CIDADE" VARCHAR2 (100),
+   "ESTADO" VARCHAR2 (2),
+   "PAIS_SEQ" NUMBER (10,0),
+   "CEP" VARCHAR2 (8),
+   "DDI_GENERICO" VARCHAR2 (3),
+   "DDD_GENERICO" VARCHAR2 (2),
+   "RESIDENCIAL_TEL" VARCHAR2 (100),
+   "COMERCIAL_TEL" VARCHAR2 (100),
+   "CELULAR_TEL" VARCHAR2 (100),
+   "FAX" VARCHAR2 (100),
+   "CONTATO_NOME" VARCHAR2 (100),
+   "CONTATO_TEL" VARCHAR2 (100),
+   "CONTATO2_NOME" VARCHAR2 (100),
+   "CONTATO2_TEL" VARCHAR2 (100),
+   "EMAIL" VARCHAR2 (100),
+   "EDITOR" NUMBER (1,0),
+   "AUTOR" NUMBER (1,0),
+   "PARECERISTA" NUMBER (1,0),
+   "REVISOR" NUMBER (1,0),
+   "TRADUTOR" NUMBER (1,0),
+   "OPERADOR" NUMBER (1,0),
+   "CRM" VARCHAR2 (12),
+   "CRM_ESTADO" VARCHAR2 (2),
+   "LOGIN" VARCHAR2 (30),
+   "SENHA" VARCHAR2 (20),
+   "DATA_FICHA_ENVIO" DATE,
+   "DATA_FICHA_APROV" DATE,
+   "ESTATISTICO" NUMBER (1,0),
+   "ADMINISTRADOR" NUMBER (1,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."RESPONSAVEL" ADD CONSTRAINT "ID_RESPONSAVEL"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."RESPONSAVEL" IS 'SUBMISS_ACOMPANHA | Autores, editores, pareceristas, tradutores, todos que colaboram no processo de publicação. | Responsável';
+
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."SEQ" IS 'Identificador sequencial do responsável no sistema. | Sequencial';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."MATRICULA" IS 'Matrícula do associado. | Matrícula do Associado';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."TRATAMENTO" IS 'Tratamento. | Tratamento';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."NOME" IS 'Nome do responsável. | Nome do Responsável';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."SEXO" IS 'Sexo (M=Masculino, F=Feminino). | Sexo';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CARGO" IS 'Cargo. | Cargo';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CARGO_I" IS 'Cargo ou qualificação padrão do responsável em inglês. | Cargo em Inglês';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CARGO_E" IS 'Cargo ou qualificação padrão do responsável em espanhol. | Cargo em Espanhol';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."ENDERECO" IS 'Endereço completo, tipo (rua, av.), logradouro e número. | Endereço Completo';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."BAIRRO" IS 'Bairro do responsável. | Bairro';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CIDADE" IS 'Cidade do responsável. | Cidade';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."ESTADO" IS 'Unidade Federativa do responsável. | Estado';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."PAIS_SEQ" IS 'País. | País';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CEP" IS 'CEP do Responsável. | CEP';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."DDI_GENERICO" IS 'DDI genérico para complemento de todos os telefones. caso algum destes possua DDD diferente, informar no próprio telefone. | DDI';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."DDD_GENERICO" IS 'DDD genérico para complemento de todos os telefones. caso algum destes possua DDD diferente, informar no próprio telefone. | DDD';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."RESIDENCIAL_TEL" IS 'Telefone de residência. | Telefone Residencial';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."COMERCIAL_TEL" IS 'Telefone comercial. | Telefone';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CELULAR_TEL" IS 'Telefone celular. | Telefone Celular';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."FAX" IS 'Número do fax do responsável. | Fax';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CONTATO_NOME" IS 'Nome de contato para acesso ao responsável. | Contato';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CONTATO_TEL" IS 'Telefone de contato caso seja necessário. | Contato';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CONTATO2_NOME" IS 'Mais um contato para se ter acesso ao responsável. | Contato';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CONTATO2_TEL" IS 'Telefone do segundo contato do responsável. | Contato';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."EMAIL" IS 'Emails do responsável (pode-se separar inúmeros emails por ponto e vírgula ";"). | E-mail';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."EDITOR" IS 'Marcado caso o responsável seja um editor. | O Responsável é um editor?';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."AUTOR" IS 'Marcado caso responsável seja um autor. | O Responsável é um autor ?';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."PARECERISTA" IS 'Marcado caso o responsável seja um parecerista. | O Responsável é um parecerista ?';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."REVISOR" IS 'Marcado caso o responsável seja um revisor. | O Responsável é um revisor ?';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."TRADUTOR" IS 'Marcado caso o responsável seja um tradutor. | O Responsável é um tradutor ?';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."OPERADOR" IS 'Marcado caso o responsável seja um operador do sistema (funcionário SBD). | Operador';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CRM" IS 'CRM quando usuário for um médico registrado. | CRM';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."CRM_ESTADO" IS 'Estado emissor do CRM. | Estado do CRM';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."LOGIN" IS 'Login de acesso. | Login';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."SENHA" IS 'Senha de acesso. | Senha';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."DATA_FICHA_ENVIO" IS 'Data de envio da ficha. | Data de Envio da Ficha';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."DATA_FICHA_APROV" IS 'Data de aprovação da ficha. | Data de Aprovação da Ficha';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."ESTATISTICO" IS 'Dados estatísticos. | Estatístico';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL"."ADMINISTRADOR" IS 'Administrador. | Administrador';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA RESPONSAVEL_TRADUCAO
+CREATE TABLE ANAIS2."RESPONSAVEL_TRADUCAO" (
+   "RESPONSAVEL_SEQ" NUMBER (10,0),
+   "TRADUCAO_MODELO" VARCHAR2 (20)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."RESPONSAVEL_TRADUCAO" ADD CONSTRAINT "ID_RESPONSAVEL_TRADUCAO"
+PRIMARY KEY("RESPONSAVEL_SEQ", "TRADUCAO_MODELO");
+
+COMMENT ON TABLE ANAIS2."RESPONSAVEL_TRADUCAO" IS 'TRADUÇÃO | Para tradutores, indica o tipo no qual se propõe a trabalhar. | Responsável da Tradução';
+
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL_TRADUCAO"."RESPONSAVEL_SEQ" IS 'Identificador sequencial do responsável no sistema. | Responsável';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL_TRADUCAO"."TRADUCAO_MODELO" IS 'Modelo de tradução oferecido pelo responsável. | Tradução';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL_TRADUCAO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL_TRADUCAO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL_TRADUCAO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL_TRADUCAO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL_TRADUCAO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL_TRADUCAO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."RESPONSAVEL_TRADUCAO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA REVISTA
+CREATE TABLE ANAIS2."REVISTA" (
+   "VOLUME_NUM" NUMBER (10,0),
+   "ID" VARCHAR2 (10),
+   "ARQUIVO_CAPA" VARCHAR2 (100),
+   "REVISTA_PUBLIC" DATE,
+   "GABARITO_PUBLIC" DATE,
+   "SITUACAO_COD" VARCHAR2 (20),
+   "POSICAO" NUMBER (10,0),
+   "ARQUIVO" VARCHAR2 (100),
+   "ARQUIVO_I" VARCHAR2 (100),
+   "ARQUIVO_E" VARCHAR2 (100),
+   "ARQUIVO_EBOOK" VARCHAR2 (100),
+   "ARQUIVO_EBOOK_I" VARCHAR2 (100),
+   "ARQUIVO_EBOOK_E" VARCHAR2 (100)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."REVISTA" ADD CONSTRAINT "ID_REVISTA"
+PRIMARY KEY("VOLUME_NUM", "ID");
+
+COMMENT ON TABLE ANAIS2."REVISTA" IS 'PUBLICAÇÃO | Cadastro das revistas. | Revista';
+
+COMMENT ON COLUMN ANAIS2."REVISTA"."VOLUME_NUM" IS 'Volume onde foi publicado o artigo ou encaminhamento provisório. | Volume';
+COMMENT ON COLUMN ANAIS2."REVISTA"."ID" IS 'Identificação da revista onde foi publicado o artigo ou encaminhamento provisório. | ID';
+COMMENT ON COLUMN ANAIS2."REVISTA"."ARQUIVO_CAPA" IS 'Nome do arquivo de capa. | Nome do Arquivo';
+COMMENT ON COLUMN ANAIS2."REVISTA"."REVISTA_PUBLIC" IS 'Data de publicação da revista no site. | Data de Publicação da revista';
+COMMENT ON COLUMN ANAIS2."REVISTA"."GABARITO_PUBLIC" IS 'Data de publicação do gabarito no site. | Data de Publicação do gabarito';
+COMMENT ON COLUMN ANAIS2."REVISTA"."SITUACAO_COD" IS 'Situação da revista para serviço interno. | Situação';
+COMMENT ON COLUMN ANAIS2."REVISTA"."POSICAO" IS 'Posição na grade de apresentação sendo a primeira a número UM. | Posição';
+COMMENT ON COLUMN ANAIS2."REVISTA"."ARQUIVO" IS 'Nome do arquivo de origem. | Nome do Arquivo';
+COMMENT ON COLUMN ANAIS2."REVISTA"."ARQUIVO_I" IS 'Nome do arquivo com os dados em inglês. | Nome do Arquivo em Inglês';
+COMMENT ON COLUMN ANAIS2."REVISTA"."ARQUIVO_E" IS 'Nome do arquivo com os dados em espanhol. | Nome do Arquivo em Espanhol';
+COMMENT ON COLUMN ANAIS2."REVISTA"."ARQUIVO_EBOOK" IS 'Nome do arquivo de origem PDF para download da revista. | Nome do Arquivo Ebook';
+COMMENT ON COLUMN ANAIS2."REVISTA"."ARQUIVO_EBOOK_I" IS 'Nome do arquivo de origem PDF para download da revista em inglês. | Nome do Arquivo Ebook Inglês';
+COMMENT ON COLUMN ANAIS2."REVISTA"."ARQUIVO_EBOOK_E" IS 'Nome do arquivo de origem PDF para download da revista em espanhol. | Nome do Arquivo Ebook Espanhol';
+COMMENT ON COLUMN ANAIS2."REVISTA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."REVISTA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."REVISTA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."REVISTA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."REVISTA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."REVISTA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."REVISTA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA REVISTA_SITUACAO
+CREATE TABLE ANAIS2."REVISTA_SITUACAO" (
+   "COD" VARCHAR2 (20),
+   "DESCRICAO" VARCHAR2 (50)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."REVISTA_SITUACAO" ADD CONSTRAINT "ID_REVISTA_SITUACAO"
+PRIMARY KEY("COD");
+
+COMMENT ON TABLE ANAIS2."REVISTA_SITUACAO" IS 'ACOMPANHAMENTO | Possível situação de cada revista para acompanhamento. | Situação da Revista';
+
+COMMENT ON COLUMN ANAIS2."REVISTA_SITUACAO"."COD" IS 'Situação da revista. | Situação';
+COMMENT ON COLUMN ANAIS2."REVISTA_SITUACAO"."DESCRICAO" IS 'Descrição da situação da revista. | Descrição';
+COMMENT ON COLUMN ANAIS2."REVISTA_SITUACAO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."REVISTA_SITUACAO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."REVISTA_SITUACAO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."REVISTA_SITUACAO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."REVISTA_SITUACAO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."REVISTA_SITUACAO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."REVISTA_SITUACAO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA SECAO
+CREATE TABLE ANAIS2."SECAO" (
+   "SEQ" NUMBER (10,0),
+   "NOME" VARCHAR2 (100),
+   "NOME_I" VARCHAR2 (100),
+   "NOME_E" VARCHAR2 (100),
+   "ORDEM" NUMBER (10,0),
+   "CANCEL" DATE
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."SECAO" ADD CONSTRAINT "ID_SECAO"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."SECAO" IS 'PUBLICAÇÃO | Possíveis seções de publicação de artigos nas revistas. | Seção';
+
+COMMENT ON COLUMN ANAIS2."SECAO"."SEQ" IS 'Sequencial da seção. | Sequencial';
+COMMENT ON COLUMN ANAIS2."SECAO"."NOME" IS 'Nome. | Nome';
+COMMENT ON COLUMN ANAIS2."SECAO"."NOME_I" IS 'Nome da seção específica em inglês. | Nome em Inglês';
+COMMENT ON COLUMN ANAIS2."SECAO"."NOME_E" IS 'Nome da seção específica em espanhol. | Nome em Espanhol';
+COMMENT ON COLUMN ANAIS2."SECAO"."ORDEM" IS 'Ordem de apresentação. | Ordenação';
+COMMENT ON COLUMN ANAIS2."SECAO"."CANCEL" IS 'Data a partir da qual esta seção não deverá mais ser considerada. | Data de Cancelamento';
+COMMENT ON COLUMN ANAIS2."SECAO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."SECAO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."SECAO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."SECAO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."SECAO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."SECAO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."SECAO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA SITE_BOLETO
+CREATE TABLE ANAIS2."SITE_BOLETO" (
+   "TIPO" NUMBER (1,0),
+   "NUMERO_BOLETO" NUMBER (14,0),
+   "NOME_SACADO" VARCHAR2 (50),
+   "ENDERECO_SACADO" VARCHAR2 (50),
+   "BAIRRO_SACADO" VARCHAR2 (25),
+   "CIDADE_SACADO" VARCHAR2 (30),
+   "ESTADO_SACADO" VARCHAR2 (2),
+   "CEP_SACADO" VARCHAR2 (8),
+   "VENCIMENTO" DATE,
+   "VALOR" VARCHAR2 (10),
+   "INSTRUCAO_SUP_1" VARCHAR2 (70),
+   "INSTRUCAO_SUP_2" VARCHAR2 (70),
+   "INSTRUCAO_INF_1" VARCHAR2 (70),
+   "INSTRUCAO_INF_2" VARCHAR2 (70),
+   "INSTRUCAO_INF_3" VARCHAR2 (70),
+   "INSTRUCAO_INF_4" VARCHAR2 (70),
+   "INSTRUCAO_INF_5" VARCHAR2 (70),
+   "INSTRUCAO_INF_6" VARCHAR2 (70)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."SITE_BOLETO" ADD CONSTRAINT "ID_SITE_BOLETO"
+PRIMARY KEY("TIPO", "NUMERO_BOLETO");
+
+COMMENT ON TABLE ANAIS2."SITE_BOLETO" IS 'ANAIS2 | Registro de boletos solicitados. | Boleto no Site';
+
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."TIPO" IS 'Tipo. | Tipo';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."NUMERO_BOLETO" IS 'Nº do boleto. | Nº do Boleto';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."NOME_SACADO" IS 'Nome do sacado. | Nome do Sacado';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."ENDERECO_SACADO" IS 'Endereço completo, tipo (rua, av.), logradouro e número do sacado. | Endereço do Sacado';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."BAIRRO_SACADO" IS 'Bairro do Sacado. | Bairro';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."CIDADE_SACADO" IS 'Cidade do Sacado. | Cidade';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."ESTADO_SACADO" IS 'Estado do sacado. | Estado';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."CEP_SACADO" IS 'CEP do Sacado. | CEP';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."VENCIMENTO" IS 'Data de Vencimento. | Data de Vencimento';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."VALOR" IS 'Valor. | Valor';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."INSTRUCAO_SUP_1" IS 'Primeira Instrução. | Primeira Instrução';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."INSTRUCAO_SUP_2" IS 'Segunda Instrução. | Segunda Instrução';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."INSTRUCAO_INF_1" IS 'Primeira Instrução. | Primeira Instrução';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."INSTRUCAO_INF_2" IS 'Segunda Instrução. | Segunda Instrução';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."INSTRUCAO_INF_3" IS 'Terceira Instrução. | Terceira Instrução';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."INSTRUCAO_INF_4" IS 'Quarta Instrução. | Quarta Instrução';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."INSTRUCAO_INF_5" IS 'Quinta Instrução. | Quinta Instrução';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO"."INSTRUCAO_INF_6" IS 'Sexta Instrução. | Sexta Instrução';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."SITE_BOLETO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA STATUS_ACOMPANHA
+CREATE TABLE ANAIS2."STATUS_ACOMPANHA" (
+   "COD" VARCHAR2 (50)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."STATUS_ACOMPANHA" ADD CONSTRAINT "ID_STATUS_ACOMPANHA"
+PRIMARY KEY("COD");
+
+COMMENT ON TABLE ANAIS2."STATUS_ACOMPANHA" IS 'SUBMISS_ACOMPANHA | Status do acompanhamento do processo. | Status de Acompanhamento';
+
+COMMENT ON COLUMN ANAIS2."STATUS_ACOMPANHA"."COD" IS 'Código de acompanhamento. | Sequencial';
+COMMENT ON COLUMN ANAIS2."STATUS_ACOMPANHA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."STATUS_ACOMPANHA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."STATUS_ACOMPANHA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."STATUS_ACOMPANHA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."STATUS_ACOMPANHA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."STATUS_ACOMPANHA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."STATUS_ACOMPANHA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA SYS_CONFIG_GLOBAL
+CREATE TABLE ANAIS2."SYS_CONFIG_GLOBAL" (
+   "PARAM" VARCHAR2 (200),
+   "DESCR" VARCHAR2 (4000),
+   "CONFIG" CLOB,
+   "PROP_EXTEND" CLOB,
+   "FORMATO" VARCHAR2 (100)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."SYS_CONFIG_GLOBAL" ADD CONSTRAINT "ID_SYS_CONFIG_GLOBAL"
+PRIMARY KEY("PARAM");
+
+COMMENT ON TABLE ANAIS2."SYS_CONFIG_GLOBAL" IS 'Sistema | Armazena parâmetros globais do aplicativo. | Configuração Global';
+
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL"."PARAM" IS 'Parametro. | Parâmetro';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL"."DESCR" IS 'Descrição. | Descrição';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL"."CONFIG" IS 'Configuração. | Configuração';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL"."PROP_EXTEND" IS 'Propriedades extendidas para configuração. | Propriedades';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL"."FORMATO" IS 'Formato de apresentação do campo MEMO, HTML ou vazio para texto comum. | Formato';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_GLOBAL".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA SYS_CONFIG_USUARIO
+CREATE TABLE ANAIS2."SYS_CONFIG_USUARIO" (
+   "USUARIO" VARCHAR2 (100),
+   "PARAM" VARCHAR2 (200),
+   "DESCR" VARCHAR2 (4000),
+   "CONFIG" VARCHAR2 (4000)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."SYS_CONFIG_USUARIO" ADD CONSTRAINT "ID_SYS_CONFIG_USUARIO"
+PRIMARY KEY("USUARIO", "PARAM");
+
+COMMENT ON TABLE ANAIS2."SYS_CONFIG_USUARIO" IS 'Sistema | Parâmetros específicos de usuários do sistema. | Configuração de Usuário';
+
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO"."USUARIO" IS 'Usuário. | Usuário';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO"."PARAM" IS 'Parametro. | Parâmetro';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO"."DESCR" IS 'Descrição. | Descrição';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO"."CONFIG" IS 'Configuração. | Configuração';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."SYS_CONFIG_USUARIO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA SYS_DELETE
+CREATE TABLE ANAIS2."SYS_DELETE" (
+   "TABELA" VARCHAR2 (70),
+   "CHAVE" VARCHAR2 (300),
+   "MOMENTO" DATE,
+   "USUARIO" VARCHAR2 (100),
+   "LOCAL" VARCHAR2 (20)
+);
+
+ALTER TABLE ANAIS2."SYS_DELETE" ADD CONSTRAINT "ID_SYS_DELETE"
+PRIMARY KEY("TABELA", "CHAVE");
+
+COMMENT ON TABLE ANAIS2."SYS_DELETE" IS 'Sistema | Registro de exclusões do sistema. | Registro de Exclusões';
+
+COMMENT ON COLUMN ANAIS2."SYS_DELETE"."TABELA" IS 'Nome da tabela onde a exclusão ocorreu. | Tabela';
+COMMENT ON COLUMN ANAIS2."SYS_DELETE"."CHAVE" IS 'Conteúdo da chave do registro excluído. | Chave';
+COMMENT ON COLUMN ANAIS2."SYS_DELETE"."MOMENTO" IS 'Momento em que ocorreu a exclusão. | Momento de Exclusão';
+COMMENT ON COLUMN ANAIS2."SYS_DELETE"."USUARIO" IS 'Detalhes do usuário que efetuou a exclusão. | Usuário';
+COMMENT ON COLUMN ANAIS2."SYS_DELETE"."LOCAL" IS 'De onde partiu a exclusão. | Local';
+
+-- TABELA SYS_LOCALID
+CREATE TABLE ANAIS2."SYS_LOCALID" (
+   "NOME" VARCHAR2 (20),
+   "CORRENTE" NUMBER (1,0),
+   "PACOTE" NUMBER (11,0),
+   "PACOTE_REC" NUMBER (11,0),
+   "MOMENTO" DATE,
+   "MOMENTO_REC" DATE,
+   "MODELO" NUMBER (11,0),
+   "DESCR" VARCHAR2 (50),
+   "OBS" VARCHAR2 (4000)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."SYS_LOCALID" ADD CONSTRAINT "ID_SYS_LOCALID"
+PRIMARY KEY("NOME");
+
+COMMENT ON TABLE ANAIS2."SYS_LOCALID" IS 'Sistema | Especificações de localidade para sistema distribuído. | Detalhes de Localidade';
+
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID"."NOME" IS 'Nome em caso de sistema distribuído. | Nome';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID"."CORRENTE" IS 'Marcado caso seja localidade corrente. | Corrente';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID"."PACOTE" IS 'Número do último pacote gerado. | Pacote Gerado';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID"."PACOTE_REC" IS 'Número do último pacote recebido. | Pacote Recebido';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID"."MOMENTO" IS 'Momento do último pacote gerado. | Momento de Geração';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID"."MOMENTO_REC" IS 'Momento do último pacote recebido. | Momento de Recebimento';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID"."MODELO" IS 'Modelo. | Modelo';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID"."DESCR" IS 'Descrição de localidade, responsabilidade ou qualquer texto que informe sobre a localidade. | Descrição';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID"."OBS" IS 'Observações sobre a localidade. | Observações';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."SYS_LOCALID".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA SYS_OCORRENCIA
+CREATE TABLE ANAIS2."SYS_OCORRENCIA" (
+   "SEQ" NUMBER (11,0),
+   "APLICACAO" VARCHAR2 (4000),
+   "OCORRENCIA" VARCHAR2 (4000),
+   "USUARIO" VARCHAR2 (100),
+   "MOMENTO" DATE,
+   "LOCAL" VARCHAR2 (20)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."SYS_OCORRENCIA" ADD CONSTRAINT "ID_SYS_OCORRENCIA"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."SYS_OCORRENCIA" IS 'Sistema | Registro de ocorrências do sistema. | Registro de Ocorrências';
+
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA"."SEQ" IS 'Sequencial da ocorrência. | Sequencial';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA"."APLICACAO" IS 'Nome do aplicativo onde ocorreu o registro. | Aplicação';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA"."OCORRENCIA" IS 'Detalhes da ocorrência. | Ocorrência';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA"."USUARIO" IS 'Usuário logado no momento da ocorrência. | Usuário';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA"."MOMENTO" IS 'Momento em que ocorreu a situação. | Momento';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA"."LOCAL" IS 'Local onde ocorreu o registro. | Localidade';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."SYS_OCORRENCIA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA TEMA
+CREATE TABLE ANAIS2."TEMA" (
+   "SEQ" NUMBER (10,0),
+   "NOME" VARCHAR2 (100),
+   "NOME_I" VARCHAR2 (100),
+   "NOME_E" VARCHAR2 (100),
+   "ORDEM" NUMBER (10,0),
+   "CANCEL" DATE
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."TEMA" ADD CONSTRAINT "ID_TEMA"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."TEMA" IS 'SUBMISS_CADASTRO | Temas tratados pelos artigos. | Tema';
+
+COMMENT ON COLUMN ANAIS2."TEMA"."SEQ" IS 'Sequencial de temas cadastrados. | Sequencial';
+COMMENT ON COLUMN ANAIS2."TEMA"."NOME" IS 'Descrição do Tema. | Nome do Tema';
+COMMENT ON COLUMN ANAIS2."TEMA"."NOME_I" IS 'Nome do tema em inglês. | Nome em Inglês';
+COMMENT ON COLUMN ANAIS2."TEMA"."NOME_E" IS 'Texto do tema em português. | Nome em Espanhol';
+COMMENT ON COLUMN ANAIS2."TEMA"."ORDEM" IS 'Ordenação para apresentação dos temas em relatórios. | Ordenação';
+COMMENT ON COLUMN ANAIS2."TEMA"."CANCEL" IS 'Data a partir da qual o tema não poderá ser mais utilizado. | Data de Cancelamento';
+COMMENT ON COLUMN ANAIS2."TEMA".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."TEMA".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."TEMA".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."TEMA".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."TEMA".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."TEMA".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."TEMA".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA TEMA_RESPONSAVEL
+CREATE TABLE ANAIS2."TEMA_RESPONSAVEL" (
+   "TEMA_SEQ" NUMBER (10,0),
+   "RESPONSAVEL_SEQ" NUMBER (10,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."TEMA_RESPONSAVEL" ADD CONSTRAINT "ID_TEMA_RESPONSAVEL"
+PRIMARY KEY("TEMA_SEQ", "RESPONSAVEL_SEQ");
+
+COMMENT ON TABLE ANAIS2."TEMA_RESPONSAVEL" IS 'SUBMISS_ACOMPANHA | Responsáveis por avaliar os temas. | Responsável do Tema';
+
+COMMENT ON COLUMN ANAIS2."TEMA_RESPONSAVEL"."TEMA_SEQ" IS 'Código sequencial do tema. | Tema';
+COMMENT ON COLUMN ANAIS2."TEMA_RESPONSAVEL"."RESPONSAVEL_SEQ" IS 'Identificação do responsável relacionado ao tema. | Responsável';
+COMMENT ON COLUMN ANAIS2."TEMA_RESPONSAVEL".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."TEMA_RESPONSAVEL".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."TEMA_RESPONSAVEL".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."TEMA_RESPONSAVEL".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."TEMA_RESPONSAVEL".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."TEMA_RESPONSAVEL".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."TEMA_RESPONSAVEL".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA TIPO_LOG
+CREATE TABLE ANAIS2."TIPO_LOG" (
+   "COD" VARCHAR2 (20),
+   "DESCRICAO" VARCHAR2 (50)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."TIPO_LOG" ADD CONSTRAINT "ID_TIPO_LOG"
+PRIMARY KEY("COD");
+
+COMMENT ON TABLE ANAIS2."TIPO_LOG" IS 'REGISTRO | Tipos de ocorrência que podem ser registradas. | Tipo de Ocorrência em Log';
+
+COMMENT ON COLUMN ANAIS2."TIPO_LOG"."COD" IS 'Log. | Log';
+COMMENT ON COLUMN ANAIS2."TIPO_LOG"."DESCRICAO" IS 'Descrição. | Descrição';
+COMMENT ON COLUMN ANAIS2."TIPO_LOG".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."TIPO_LOG".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."TIPO_LOG".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."TIPO_LOG".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."TIPO_LOG".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."TIPO_LOG".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."TIPO_LOG".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA TIPO_MEIO
+CREATE TABLE ANAIS2."TIPO_MEIO" (
+   "COD" VARCHAR2 (20),
+   "DESCRICAO" VARCHAR2 (50)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."TIPO_MEIO" ADD CONSTRAINT "ID_TIPO_MEIO"
+PRIMARY KEY("COD");
+
+COMMENT ON TABLE ANAIS2."TIPO_MEIO" IS 'REGISTRO | Possíveis meios de comunicação com os colaboradores. | Meio de Comunicação';
+
+COMMENT ON COLUMN ANAIS2."TIPO_MEIO"."COD" IS 'Meio. | Meio';
+COMMENT ON COLUMN ANAIS2."TIPO_MEIO"."DESCRICAO" IS 'Descrição. | Descrição';
+COMMENT ON COLUMN ANAIS2."TIPO_MEIO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."TIPO_MEIO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."TIPO_MEIO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."TIPO_MEIO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."TIPO_MEIO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."TIPO_MEIO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."TIPO_MEIO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA TIPO_TRADUCAO
+CREATE TABLE ANAIS2."TIPO_TRADUCAO" (
+   "MODELO" VARCHAR2 (20),
+   "DE" VARCHAR2 (1),
+   "PARA" VARCHAR2 (1)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."TIPO_TRADUCAO" ADD CONSTRAINT "ID_TIPO_TRADUCAO"
+PRIMARY KEY("MODELO");
+
+COMMENT ON TABLE ANAIS2."TIPO_TRADUCAO" IS 'TRADUÇÃO | Tipos possíveis de tradução. | Tipo de Tradução';
+
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO"."MODELO" IS 'Modelo de tradução. | Modelo';
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO"."DE" IS 'Idioma original. | De';
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO"."PARA" IS 'Traduzir para. | Para';
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."TIPO_TRADUCAO".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA TRADUZ
+CREATE TABLE ANAIS2."TRADUZ" (
+   "SEQ" NUMBER (10,0),
+   "COLABORADOR" NUMBER (10,0),
+   "SOLICITANTE" NUMBER (10,0),
+   "MODELO" VARCHAR2 (20),
+   "FONTE" VARCHAR2 (200),
+   "TEXTO" CLOB,
+   "TEXTO_I" CLOB,
+   "TEXTO_E" CLOB,
+   "DATA_ENVIO" DATE,
+   "ETAPA_ACOMPANHA_SEQ" NUMBER (10,0),
+   "RETORNO" NUMBER (10,0),
+   "NOTIFICA" NUMBER (10,0),
+   "RECOBRA" NUMBER (10,0),
+   "RECOBRA_QTD" NUMBER (10,0),
+   "DATA_CONCLUSAO" DATE
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."TRADUZ" ADD CONSTRAINT "ID_TRADUZ"
+PRIMARY KEY("SEQ");
+
+COMMENT ON TABLE ANAIS2."TRADUZ" IS 'TRADUÇÃO | Registro de informações a serem traduzidas. | Informação sobre a Tradução';
+
+COMMENT ON COLUMN ANAIS2."TRADUZ"."SEQ" IS 'Sequencial de tradução. | Sequencial';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."COLABORADOR" IS 'Tradutor responsável. | Colaborador';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."SOLICITANTE" IS 'Solicitante do procedimento. | Solicitante';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."MODELO" IS 'Modelo de tradução. | Modelo';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."FONTE" IS 'Identificação da fonte para retorno da informação. | Fonte';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."TEXTO" IS 'Texto. | Texto';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."TEXTO_I" IS 'Texto em inglês. | Texto em Inglês';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."TEXTO_E" IS 'Texto em espanhol. | Texto em Espanhol';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."DATA_ENVIO" IS 'Data de envio do material. | Data de Envio';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."ETAPA_ACOMPANHA_SEQ" IS 'Etapa de acompanhamento para definição dos prazos de notificação automaticamente. | Etapa';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."RETORNO" IS 'Dias a partir do envio do material previsto para retorno. | Retorno';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."NOTIFICA" IS 'Quantidade de dias a partir da previsão de retorno para iniciar processo de notificação (negativo para antes do prazo e positivo depois). | Notifica';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."RECOBRA" IS 'Dias a partir da última notificação para nova lembrança. | Recobra';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."RECOBRA_QTD" IS 'Número de vezes que o sistema deverá emitir a lembrança. | Recobra';
+COMMENT ON COLUMN ANAIS2."TRADUZ"."DATA_CONCLUSAO" IS 'Data de retorno do material por parte do colaborador. | Data de Conclusão';
+COMMENT ON COLUMN ANAIS2."TRADUZ".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."TRADUZ".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."TRADUZ".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."TRADUZ".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."TRADUZ".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."TRADUZ".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."TRADUZ".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+-- TABELA VOLUME
+CREATE TABLE ANAIS2."VOLUME" (
+   "NUM" NUMBER (10,0),
+   "ANO" NUMBER (10,0)
+,
+   SYS_MOMENTO_CRIA DATE,
+   SYS_USUARIO_CRIA VARCHAR2 (100),
+   SYS_LOCAL_CRIA VARCHAR2 (100),
+   SYS_MOMENTO_ATUALIZA DATE,
+   SYS_USUARIO_ATUALIZA VARCHAR2 (100),
+   SYS_LOCAL_ATUALIZA VARCHAR2 (100),
+   SYS_STATUS CHAR (1)
+);
+
+ALTER TABLE ANAIS2."VOLUME" ADD CONSTRAINT "ID_VOLUME"
+PRIMARY KEY("NUM");
+
+COMMENT ON TABLE ANAIS2."VOLUME" IS 'PUBLICAÇÃO | Informações sobre volumes de publicação (diversas revistas). | Volume';
+
+COMMENT ON COLUMN ANAIS2."VOLUME"."NUM" IS 'Volume onde foi publicado o artigo ou encaminhamento provisório. | Volume';
+COMMENT ON COLUMN ANAIS2."VOLUME"."ANO" IS 'Ano do volume. | Ano';
+COMMENT ON COLUMN ANAIS2."VOLUME".SYS_MOMENTO_CRIA IS 'Registra momento de gravação. | Momento de Criação';
+COMMENT ON COLUMN ANAIS2."VOLUME".SYS_USUARIO_CRIA IS 'Registra usuário que gravou. | Usuário que Criou';
+COMMENT ON COLUMN ANAIS2."VOLUME".SYS_LOCAL_CRIA IS 'Registra local de gravação. | Local de Criação';
+COMMENT ON COLUMN ANAIS2."VOLUME".SYS_MOMENTO_ATUALIZA IS 'Registra momento de atualização. | Momento de Atualização';
+COMMENT ON COLUMN ANAIS2."VOLUME".SYS_USUARIO_ATUALIZA IS 'Registra usuário que atualizou. | Usuário que Alterou';
+COMMENT ON COLUMN ANAIS2."VOLUME".SYS_LOCAL_ATUALIZA IS 'Registra local de atualização. | Local de Alteração';
+COMMENT ON COLUMN ANAIS2."VOLUME".SYS_STATUS IS 'Status do registro entre I=Incluído, A=Alterado ou Vazio=Sem modificação. | Status do Registro';
+
+/* **********************************************************************************
+   CRIAÇÃO DE TABELAS DO SISTEMA
+*/
+
+
+-- TABELA DE SISTEMA - GRANTS GERAIS
+GRANT SELECT ON ANAIS2.SYS_CONFIG_GLOBAL TO PUBLIC;
+GRANT SELECT ON ANAIS2.SYS_CONFIG_USUARIO TO PUBLIC;
+GRANT SELECT ON ANAIS2.SYS_DELETE TO PUBLIC;
+GRANT SELECT ON ANAIS2.SYS_LOCALID TO PUBLIC;
+GRANT SELECT ON ANAIS2.SYS_OCORRENCIA TO PUBLIC;
+SPOOL OFF
+
+
+-- EXEMPLO PARA IMPORT DE INFORMAÇÕES E 
+-- CÓDIGO PARA ELIMINAR OBJETOS IMPORTADOS EQUIVOCADAMENTE
+
+SET SERVEROUTPUT ON SIZE 40000
+SET ECHO OFF
+SELECT
+'EXP ANAIS2/XXXX@SBDB OWNER=(ANAIS2) FILE=ANAIS2.DMP LOG=ANAIS2_EXP.LOG' || CHR(13) || CHR(10) ||
+'IMP ANAIS2/XXXX@SBDB FROMUSER=ANAIS2 CONSTRAINTS=NO GRANTS=NO FILE=ANAIS2.DMP LOG=ANAIS2_IMP.LOG IGNORE=YES' || CHR(13) || CHR(10) ||
+'' || CHR(13) || CHR(10) ||
+'' || CHR(13) || CHR(10) ||
+'DECLARE' || CHR(13) || CHR(10) ||
+'    MAX NUMBER := ' || MAX(OBJECT_ID) || ';' || CHR(13) || CHR(10) ||
+'BEGIN' || CHR(13) || CHR(10) ||
+' FOR CUR IN (SELECT ''DROP '' || OBJECT_TYPE || '' '' || OWNER || ''.'' || OBJECT_NAME ' || CHR(13) || CHR(10) ||
+' AS COL FROM ALL_OBJECTS WHERE OBJECT_ID > MAX) LOOP' || CHR(13) || CHR(10) ||
+'  DBMS_OUTPUT.PUT(CUR.COL);' || CHR(13) || CHR(10) ||
+'  BEGIN' || CHR(13) || CHR(10) ||
+'   EXECUTE IMMEDIATE CUR.COL;' || CHR(13) || CHR(10) ||
+'   DBMS_OUTPUT.PUT_LINE('' ==> OK'');' || CHR(13) || CHR(10) ||
+'  EXCEPTION WHEN OTHERS THEN' || CHR(13) || CHR(10) ||
+'   DBMS_OUTPUT.PUT_LINE('' ==> '' || SQLERRM);' || CHR(13) || CHR(10) ||
+'  END;' || CHR(13) || CHR(10) ||
+' END LOOP;' || CHR(13) || CHR(10) ||
+'END;' || CHR(13) || CHR(10) ||
+'/' || CHR(13) || CHR(10) ||
+'' || CHR(13) || CHR(10) ||
+'' || CHR(13) || CHR(10) FROM ALL_OBJECTS
+/
+
+
+
+SPOOL OFF
+$ECHO - >>"C:\ANAIS2_PARTES.LOG"
+$ECHO - >>"C:\ANAIS2_PARTES.LOG"
+$ECHO - >>"C:\ANAIS2_PARTES.LOG"
+$COMMAND /C ECHO %DATE% %TIME% >>"C:\ANAIS2_PARTES.LOG"
+$COMMAND /C FIND "ORA-" "C:\ANAIS2_PARTE1.LOG" >>"C:\ANAIS2_PARTES.LOG"
+$COMMAND /C FIND "SP2-" "C:\ANAIS2_PARTE1.LOG" >>"C:\ANAIS2_PARTES.LOG"

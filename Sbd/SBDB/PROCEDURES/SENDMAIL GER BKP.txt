@@ -1,0 +1,63 @@
+create or replace
+PROCEDURE "SENDMAIL" (De in varchar, Para in varchar, Assunto in varchar,Texto in varchar) is
+  smtp utl_smtp.connection;
+  Servidor varchar(15);
+  DominioOrigem varchar(15);
+  ServNome varchar2(100);
+begin
+  begin
+    Select SBD, SBD into Servidor, DominioOrigem from SBDB.PARAMETRO where PARAM = 'Servidor de e-mail';
+  exception
+      when no_data_found then
+            Servidor := 'SMTPI';
+            DominioOrigem := 'SMTPI';
+  end;
+
+  smtp := utl_smtp.open_connection(servidor,25);
+  UTL_SMTP.EHLO(smtp, DominioOrigem);
+  UTL_SMTP.MAIL(smtp,'<'||De ||'>');
+  UTL_SMTP.RCPT(smtp, '<'||Para||'>');
+  UTL_SMTP.OPEN_DATA(smtp);
+  UTL_SMTP.WRITE_DATA(smtp, 'From: ' || De || UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp, 'To: ' || Para || UTL_TCP.CRLF);
+
+  select machine into ServNome from v$session where program like 'ORACLE.EXE%' and type='BACKGROUND' and ROWNUM=1;
+
+  utl_smtp.write_raw_data(smtp,utl_raw.cast_to_raw('Subject:' || Assunto));
+  UTL_SMTP.WRITE_DATA(smtp,UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,'MIME-Version: 1.0' || UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,'Content-Type: multipart/mixed;'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,CHR(9)||'boundary="MENSAGEM"'||UTL_TCP.CRLF);
+
+  UTL_SMTP.WRITE_DATA(smtp,'X-Priority: 1 (Highest)'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,'X-MSMail-Priority: High'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,'X-Mailer: Microsoft Office Outlook, Build 11.0.5510'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,'X-MimeOLE: Produced By Microsoft MimeOLE V6.00.2800.1807'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,'Importance: High'||UTL_TCP.CRLF);
+
+  UTL_SMTP.WRITE_DATA(smtp,'--MENSAGEM'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,'Content-Type: multipart/related;'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,CHR(9)||'boundary="CONTEUDOHTML"'||UTL_TCP.CRLF||UTL_TCP.CRLF);
+
+  UTL_SMTP.WRITE_DATA(smtp,'--CONTEUDOHTML'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,'Content-Type: text/html;'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,CHR(9)||'charset="iso-8859-1"'||UTL_TCP.CRLF);
+  UTL_SMTP.WRITE_DATA(smtp,'Content-Transfer-Encoding: quoted-printable'||UTL_TCP.CRLF||UTL_TCP.CRLF);
+
+  utl_smtp.write_raw_data(smtp,utl_raw.cast_to_raw(Texto));
+
+  UTL_SMTP.CLOSE_DATA(smtp);
+
+  UTL_SMTP.QUIT(smtp);
+EXCEPTION
+  WHEN utl_smtp.transient_error OR utl_smtp.permanent_error THEN
+  BEGIN
+    UTL_SMTP.QUIT(smtp);
+  EXCEPTION
+    WHEN UTL_SMTP.TRANSIENT_ERROR OR UTL_SMTP.PERMANENT_ERROR THEN
+      NULL; -- When the SMTP server is down or unavailable, we don't have
+  END;
+
+END;
+
+/

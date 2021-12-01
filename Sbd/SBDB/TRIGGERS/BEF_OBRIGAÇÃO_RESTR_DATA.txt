@@ -1,0 +1,10 @@
+CREATE OR REPLACE TRIGGER SBDB.BEF_OBRIGAÇÃO_RESTR_DATA BEFORE
+   INSERT OR
+   UPDATE ON SBDB.OBRIGAÇÃO FOR EACH ROW BEGIN IF (TO_CHAR(:NEW.DATA_LANÇAMENTO,'yyyy') <= '1700')
+    OR (TO_CHAR(:NEW.DATA_LANÇAMENTO,'yyyy')                                              >= '2100')
+    OR (TO_CHAR(:NEW.COMPETÊNCIA,'yyyy')                                                  <= '1700')
+    OR (TO_CHAR(:NEW.COMPETÊNCIA,'yyyy')                                                  >= '2100')
+   OR (TO_CHAR(:NEW.DATA_VENCIMENTO,'yyyy')                                              <= '1700')
+   OR (TO_CHAR(:NEW.DATA_VENCIMENTO,'yyyy')                                              >= '2100') THEN RAISE_APPLICATION_ERROR(-20000, 'Tratamento de Erro');
+END IF;
+END;

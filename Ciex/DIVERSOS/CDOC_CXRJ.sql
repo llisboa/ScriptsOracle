@@ -1,0 +1,1955 @@
+-- 07/02/2003 CONHECIMENTO RODOVIÁRIO EXP E IMP. EMBALAGEM DIFERENTE E UMA MELHORA NA ESTRUTURAÇÃO DA EMBALAGEM PADRÃO.
+-- 07/02/2003 LEXTRAI PARA RETORNAR ' ' E NÃO ''.
+-- 18/08/2003 FUNÇÃO PARA COPIA DE DIVERSOS DOCUMENTOS.
+-- 18/12/2004 RETIRADA DO FOR PARA COMPOR O NCM E NALADI. ALTERAR A FUNÇÃO RET_NCM E RET_NALADI PARA PEGAR A DESCRIÇÃO QUE O JOÃO CADASTROU.
+-- 20/06/2005 PASSAGEM DE DOIS PARÂMETROS NA FUNÇÃO lcriaembdoc PARA BUSCAR O NOME E ENDEREÇO DO NEGOCIADOR DA CARTA DE CRÉDITO.
+-- 22/06/2005 CRIAÇAO DO PROCEDIMENTO RET_VALOR_EMB_DOC_REL PARA ATUALIZAR O VALOR DOS DOCUMENTOS SEMPRE QUE É ANEXADO ALGUM OUTRO EMBARQUE	
+
+create or replace package cx_doc is
+
+    procedure lcriaembdoc(in_doc in varchar2, in_tipo in varchar2, in_emb in varchar2, in_item in number, nome_neg in varchar2 := '' , end_neg in varchar2 := '' );
+    procedure latualizaembdoc(ref_origem in varchar2, seq_origem in number, ref_destino in varchar2, doc varchar2); 
+    function ret_peso(ref in varchar2) return number;
+    function ret_valor(ref in varchar2, tipo in varchar2) return number; 
+    function ret_msg(ref in varchar2, doc in varchar2, tipo in varchar2) return varchar2;
+    function ret_NCM_descr(cod_descr in varchar2, produt in varchar2) return varchar2;
+    function ret_NALADI_descr(cod_descr in varchar2, produt in varchar2) return varchar2;
+    function LExtrai(ref_embarque in varchar2, cod_emba in varchar2, lingua in varchar2) return varchar2;
+    function RET_RE(ref in varchar2) return varchar2;
+    procedure RET_VALOR_EMB_DOC_REL ( EMB_REF_ORIG in varchar2, EMB_SEQ_ORIG in number, MOEDA_ORIG in varchar2 := NULL);    
+   
+end cx_doc;
+
+/
+
+create or replace package body cx_doc is
+
+	function ret_peso(ref in varchar2) return number is 
+	BRUTO number;
+	begin
+	BRUTO := 0;
+	for cur in (SELECT PESO_BRUTO FROM BL_CARGA WHERE EMB_REF = ref) loop
+		BRUTO := BRUTO + CUR.PESO_BRUTO;		
+	end loop;
+	return BRUTO;
+	END ret_peso;
+		
+	function ret_valor(ref in varchar2, tipo in varchar2) return number is 
+	T_VALOR number;
+	begin
+	T_VALOR := 0;
+	if tipo = 'EXP'then
+		for cur in (SELECT EXP_CALC FROM EMB_TOTALIZA WHERE (EMB_REF = ref AND LANÇ = 'TOTAL GERAL' AND EXP = -1) OR (EMB_REF = ref AND LANÇ = 'TOTAL GERAL' AND EXP = 1)) loop
+			T_VALOR := T_VALOR + CUR.EXP_CALC;		
+		end loop;
+	elsif tipo = 'IMP'then
+		for cur in (SELECT IMP_CALC FROM EMB_TOTALIZA WHERE (EMB_REF = ref AND LANÇ = 'TOTAL GERAL' AND IMP = -1) OR (EMB_REF = ref AND LANÇ = 'TOTAL GERAL' AND IMP = 1)) loop
+			T_VALOR := T_VALOR + CUR.IMP_CALC;		
+		end loop;
+	end if;
+	return T_VALOR;
+	END ret_valor;
+
+
+	function ret_msg (ref in varchar2, doc in varchar2, tipo in varchar2) return varchar2 is
+	mensagem varchar2 (3000);
+	begin
+		if doc = 'DOC_CARTA_I' and tipo = 'EXP'then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_CARTA_I = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+		elsif doc = 'DOC_CARTA_I' and tipo = 'IMP'then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_CARTA_I = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+		elsif doc = 'DOC_CARTA_P' and tipo = 'EXP'then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_CARTA_P = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+		elsif doc = 'DOC_CARTA_P' and tipo = 'IMP'then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_CARTA_P = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+		elsif doc = 'DOC_FATURA' and tipo = 'EXP'then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_FATURA = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+		elsif doc = 'DOC_FATURA' and tipo = 'IMP'then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_FATURA = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+		elsif doc = 'DOC_MERCOSUL' and tipo = 'EXP'then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_MERCOSUL = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+		elsif doc = 'DOC_MERCOSUL' and tipo = 'IMP'then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_MERCOSUL = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_MERCOSUL_CHILE' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_MERCOSUL_CHILE = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_MERCOSUL_CHILE' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_MERCOSUL_CHILE = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_MERCOSUL_BOLIV' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_MERCOSUL_BOLIVIA = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_MERCOSUL_BOLIV' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_MERCOSUL_BOLIVIA = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_SAQUE_2V' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_SAQUE_2_VIAS = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_SAQUE_2V' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_SAQUE_2_VIAS = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_SAQUE_3V' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_SAQUE_3_VIAS = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_SAQUE_3V' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_SAQUE_3_VIAS = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_SAQUE_JUROS_2V' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_SAQUE_JUR_2_VIAS = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_SAQUE_JUROS_2V' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_SAQUE_JUR_2_VIAS = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_SAQUE_JUROS_3V' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_SAQUE_JUR_3_VIAS = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_SAQUE_JUROS_3V' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_SAQUE_JUR_3_VIAS = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+     		elsIf doc = 'DOC_PLIST_WEIG_CERT' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_PLIST_WEIG_CERT = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_PLIST_WEIG_CERT' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_PLIST_WEIG_CERT = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_ALADI' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_ALADI = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_ALADI' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_ALADI = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_FATURA_JUROS' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_FATURA_JUROS = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_FATURA_JUROS' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_FATURA_JUROS = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_FIRJAN' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_FIRJAN = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_FIRJAN' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_FIRJAN = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+      		elsIf doc = 'DOC_CONHECIMENT_ROD' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_CONHECIM_ROD = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_CONHECIMENT_ROD' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_CONHECIM_ROD = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+      		elsIf doc = 'DOC_FECHAMENTO_CÂMB' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_FECH_CAMBIO = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_FECHAMENTO_CÂMB' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_FECH_CAMBIO = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+      		elsIf doc = 'DOC_CÂMARA_COMÉRCIO' and tipo = 'EXP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_CÂMARA_COMÉRCIO = -1 AND EXP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+       		elsIf doc = 'DOC_CÂMARA_COMÉRCIO' and tipo = 'IMP' then
+			for cur in (SELECT MSG FROM EMB_MENSAGEM WHERE EMB_REF = ref AND DOC_CÂMARA_COMÉRCIO = -1 AND IMP = -1) loop
+				mensagem := mensagem || cur.msg || chr(13) || chr(10);
+			end loop;
+		end if;
+	return mensagem; 
+	END RET_MSG;
+
+	function ret_NCM_descr(cod_descr in varchar2, produt in varchar2) return varchar2 is
+	descrição varchar2 (1000);
+	begin
+		for cur in (SELECT NCM_OBS FROM PRODUTO WHERE COD = produt AND NCM = cod_descr) loop
+			descrição := cur.NCM_OBS;	
+		end loop;
+	return descrição;
+	END ret_NCM_descr;
+
+	function ret_NALADI_descr(cod_descr in varchar2, produt in varchar2) return varchar2 is
+	descrição varchar2 (1000);
+	begin
+		for cur in (SELECT NALADI_OBS FROM PRODUTO WHERE COD = produt AND NALADI = cod_descr) loop
+			descrição := cur.NALADI_OBS;	
+		end loop;
+	return descrição;
+	END ret_NALADI_descr;
+
+
+	function Lextrai(ref_embarque in varchar2, cod_emba in varchar2, lingua in varchar2) return varchar2 is
+	descrição varchar2 (1000);
+	Tip_lingua varchar2 (10);
+	ret_descr varchar2 (100);	
+	POS_INI number;
+	POS_FIM number;
+	Ret_proc number;
+	begin
+		SELECT IDIOMA INTO Tip_lingua FROM EMB WHERE REF = ref_embarque;
+		IF lingua = '+' then
+			Tip_lingua := Tip_Lingua || lingua || ':';
+		else
+			Tip_lingua := Tip_Lingua || ':';
+		end if;
+		SELECT COUNT(COD) INTO ret_proc FROM EMBALAGEM WHERE COD = cod_emba AND UPPER(DESCR) LIKE '%' || UPPER(TIP_LINGUA) || '%';		
+		if ret_proc = 0 then
+			ret_descr := cod_emba;
+		else
+			SELECT DESCR INTO DESCRIÇÃO FROM EMBALAGEM WHERE COD = cod_emba;	
+			POS_INI := instr(descrição, Tip_Lingua) + length(Tip_Lingua);
+			POS_FIM := instr(SUBSTR(DESCRIÇÃO,POS_INI), CHR(13) || CHR(10)) - 1; 
+			IF (POS_INI - length(Tip_Lingua) - 1) = 0 THEN
+				ret_descr := ' ';
+			ELSE
+				IF POS_FIM < 0 THEN
+					ret_descr := UPPER(SUBSTR(DESCRIÇÃO,POS_INI));
+				ELSE
+					ret_descr := UPPER(SUBSTR(DESCRIÇÃO,POS_INI,POS_FIM));
+				END IF;
+			END IF;
+		end if;
+	return ret_descr;
+	END Lextrai;
+
+	function RET_RE (ref in varchar2) return varchar2 is
+	retor varchar2 (3000);
+	begin
+		retor := ' ';
+		for cur in (SELECT RE FROM EMB_RE where EMB_REF = ref) loop
+			if retor = ' ' THEN
+				retor := CUR.RE;
+			else
+				retor := retor || ';' || CUR.RE;
+			end if;
+		end loop;
+	return retor; 
+	END RET_RE;
+
+
+	procedure lcriaembdoc(in_doc in varchar2, in_tipo in varchar2, in_emb in varchar2, in_item in number, nome_neg in varchar2 := '' , end_neg in varchar2 := '' ) is
+    	MAXDOC number;
+    	MAXITEM number;
+	MAXLANC number;
+	MAXORDEM number;
+	aux number;
+	MERCOSUL_PAÍS varchar2(100);
+	MERCOSUL_VIA_TRANSP varchar2(100);
+	EMB_PADRÃO varchar2(100);
+	EMB_TESTE varchar2(100);
+	EMB_ANTER varchar2(100);
+	EMB_UNIC varchar2(100);
+	GR_VEZES number;
+	GR_VOL number;
+	GR_LIQ number;
+	GR_BRT number;
+	GR_EMBA varchar2(100);
+	CTR_NCM boolean;
+	IN_NCM boolean;
+	VALOR_SAQUE number;
+	VALOR_JUROS number;
+	begin
+-- CARTA INGLÊS
+		if in_doc = 'DOC_CARTA_I' and in_tipo = 'EXP' then
+            		SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_CARTA_I;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+            		INSERT INTO CXRJ.DOC_CARTA_I (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DATA_DOC, ASSUNTO, MENSAGEM, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.EXP_LOGOTIPO, EMB.EXP, EMB.EXP, EMB.EXP_ENDEREÇO || chr(13) || chr(10) || EMB.EXP_PAÍS, EMB.EXP_PAÍS, NULL, NULL, CARTA_CRÉDITO.BCO_NEGOCIADOR, NULL, NULL, NULL, NULL, NULL, EMB.DATA_EMISSÃO_DOC, NULL, ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC, CARTA_CRÉDITO, CIA WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+) AND EMB.CARTA_CRED_REF = CARTA_CRÉDITO.REF (+) AND EMB.CARTA_CRED_REF = CIA.COD (+);
+		elsif in_doc = 'DOC_CARTA_I' and in_tipo = 'IMP' then
+            		SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_CARTA_I;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+           		INSERT INTO CXRJ.DOC_CARTA_I (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DATA_DOC, ASSUNTO, MENSAGEM, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.IMP_LOGOTIPO, EMB.IMP, EMB.IMP, EMB.IMP_ENDEREÇO || chr(13) || chr(10) || EMB.IMP_PAÍS, EMB.IMP_PAÍS, NULL, NULL, CARTA_CRÉDITO.BCO_NEGOCIADOR, NULL, NULL, NULL, NULL, NULL, EMB.DATA_EMISSÃO_DOC, NULL, ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC, CARTA_CRÉDITO, CIA WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+) AND EMB.CARTA_CRED_REF = CARTA_CRÉDITO.REF (+) AND EMB.CARTA_CRED_REF = CIA.COD (+);
+-- CARTA PORTUGUÊS 
+	        elsif in_doc = 'DOC_CARTA_P' and in_tipo = 'EXP' then
+        		SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_CARTA_P;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+            		INSERT INTO CXRJ.DOC_CARTA_P (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DATA_DOC, ASSUNTO, MENSAGEM, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.EXP_LOGOTIPO, EMB.EXP, EMB.EXP, EMB.EXP_ENDEREÇO || chr(13) || chr(10) || EMB.EXP_PAÍS, EMB.EXP_PAÍS, NULL, NULL, CARTA_CRÉDITO.BCO_NEGOCIADOR, NULL, NULL, NULL, NULL, NULL, EMB.DATA_EMISSÃO_DOC, NULL, ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC, CARTA_CRÉDITO, CIA WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+) AND EMB.CARTA_CRED_REF = CARTA_CRÉDITO.REF (+) AND EMB.CARTA_CRED_REF = CIA.COD (+);
+	        elsif in_doc = 'DOC_CARTA_P' and in_tipo = 'IMP' then
+            		SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_CARTA_P;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+		        INSERT INTO CXRJ.DOC_CARTA_P (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DATA_DOC, ASSUNTO, MENSAGEM, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.IMP_LOGOTIPO, EMB.IMP, EMB.IMP, EMB.IMP_ENDEREÇO || chr(13) || chr(10) || EMB.IMP_PAÍS, EMB.IMP_PAÍS, NULL, NULL, CARTA_CRÉDITO.BCO_NEGOCIADOR, NULL, NULL, NULL, NULL, NULL, EMB.DATA_EMISSÃO_DOC, NULL, ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC, CARTA_CRÉDITO, CIA WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+) AND EMB.CARTA_CRED_REF = CARTA_CRÉDITO.REF (+) AND EMB.CARTA_CRED_REF = CIA.COD (+);
+-- BORDERÔ INGLÊS
+		elsif in_doc = 'DOC_BORDERÔ_I' and in_tipo = 'EXP' then
+            		SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_BORDERÔ_I;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+            		INSERT INTO CXRJ.DOC_BORDERÔ_I (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DATA_DOC, REF_CIEX, DESTINO_REF, MOEDA, VALOR, SACADO, SACADO_ENDEREÇO, SACADO_PAÍS, COMISSÃO, INSTRUÇÕES, DOCUMENTO, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.EXP_LOGOTIPO, EMB.EXP, EMB.EXP, EMB.EXP_ENDEREÇO || chr(13) || chr(10) || EMB.EXP_PAÍS, EMB.EXP_PAÍS, NULL, NULL, CARTA_CRÉDITO.BCO_NEGOCIADOR, nome_neg, end_neg, NULL, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.EXP_FAT, NULL, EMB.MOEDA, ret_valor(in_Emb, in_tipo), EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, NULL, NULL, EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC, CARTA_CRÉDITO, CIA WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+) AND EMB.CARTA_CRED_REF = CARTA_CRÉDITO.REF (+) AND EMB.CARTA_CRED_REF = CIA.COD (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+	        elsif in_doc = 'DOC_BORDERÔ_I' and in_tipo = 'IMP' then
+        		SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_BORDERÔ_I;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+            		INSERT INTO CXRJ.DOC_BORDERÔ_I (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DATA_DOC, REF_CIEX, DESTINO_REF, MOEDA, VALOR, SACADO, SACADO_ENDEREÇO, SACADO_PAÍS, COMISSÃO, INSTRUÇÕES, DOCUMENTO, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.IMP_LOGOTIPO, EMB.IMP, EMB.IMP, EMB.IMP_ENDEREÇO || chr(13) || chr(10) || EMB.IMP_PAÍS, EMB.IMP_PAÍS, NULL, NULL, CARTA_CRÉDITO.BCO_NEGOCIADOR, nome_neg, end_neg, NULL, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.IMP_FAT, NULL, EMB.MOEDA, ret_valor(in_Emb, in_tipo), EMB.PAGADOR, EMB.PAG_ENDEREÇO, EMB.PAG_PAÍS, NULL, NULL, NULL, EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC, CARTA_CRÉDITO, CIA WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+) AND EMB.CARTA_CRED_REF = CARTA_CRÉDITO.REF (+) AND EMB.CARTA_CRED_REF = CIA.COD (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+-- BORDERÔ PORTUGUÊS
+	        elsif in_doc = 'DOC_BORDERÔ_P' and in_tipo = 'EXP' then
+        		SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_BORDERÔ_P;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_BORDERÔ_P (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DATA_DOC, REF_CIEX, DESTINO_REF, MOEDA, VALOR, SACADO, SACADO_ENDEREÇO, SACADO_PAÍS, COMISSÃO, INSTRUÇÕES, DOCUMENTO, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.EXP_LOGOTIPO, EMB.EXP, EMB.EXP, EMB.EXP_ENDEREÇO || chr(13) || chr(10) || EMB.EXP_PAÍS, EMB.EXP_PAÍS, NULL, NULL, CARTA_CRÉDITO.BCO_NEGOCIADOR, NULL, NULL, NULL, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.EXP_FAT, NULL, EMB.MOEDA, ret_valor(in_Emb, in_tipo), EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, NULL, NULL, EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC, CARTA_CRÉDITO, CIA WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+) AND EMB.CARTA_CRED_REF = CARTA_CRÉDITO.REF (+) AND EMB.CARTA_CRED_REF = CIA.COD (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+        	elsif in_doc = 'DOC_BORDERÔ_P' and in_tipo = 'IMP' then
+            		SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_BORDERÔ_P;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_BORDERÔ_P (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DATA_DOC, REF_CIEX, DESTINO_REF, MOEDA, VALOR, SACADO, SACADO_ENDEREÇO, SACADO_PAÍS, COMISSÃO, INSTRUÇÕES, DOCUMENTO, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.IMP_LOGOTIPO, EMB.IMP, EMB.IMP, EMB.IMP_ENDEREÇO || chr(13) || chr(10) || EMB.IMP_PAÍS, EMB.IMP_PAÍS, NULL, NULL, CARTA_CRÉDITO.BCO_NEGOCIADOR, NULL, NULL, NULL, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.IMP_FAT, NULL, EMB.MOEDA, ret_valor(in_Emb, in_tipo), EMB.PAGADOR, EMB.PAG_ENDEREÇO, EMB.PAG_PAÍS, NULL, NULL, NULL, EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC, CARTA_CRÉDITO, CIA WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+) AND EMB.CARTA_CRED_REF = CARTA_CRÉDITO.REF (+) AND EMB.CARTA_CRED_REF = CIA.COD (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+-- FATURA
+       		elsIf in_doc = 'DOC_FATURA' and in_tipo = 'EXP' then
+		        SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_FATURA;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+	 		INSERT INTO CXRJ.DOC_FATURA (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, SACADO_CIA_COD, SACADO_NOME, SACADO_ENDEREÇO, SACADO_PAÍS, SACADO_CONTATO, TÍTULO, REF_CIEX, DATA_DOC, MOEDA, FAT_VALOR, CARGA_EMBARQUE, CARGA_DESCARGA, TRANSPORTADOR, DESCR_BL, COND_PAG, UNID_PESO, UNID_VALOR, PESO_BRUTO, MENSAGEM, ASSINATURA, IDIOMA, DESCR_MERC, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.EXP_LOGOTIPO, EMB.EXP, EMB.EXP, EMB.EXP_ENDEREÇO || chr(13) || chr(10) || EMB.EXP_PAÍS, EMB.EXP_PAÍS, NULL, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, NULL, EMB.EXP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.MOEDA, ret_valor(in_Emb, in_tipo), EMB.CARGA_PORTO, EMB.DESCARGA_PORTO, EMB.TRANSPORTADOR, EMB.NUM_BL_DESCR, EMB.EXP_COND_PAG, EMB.PESO_UNID, EMB.PREÇO_UNITÁRIO_UNID, ret_peso(in_Emb), ret_msg(in_Emb, in_doc, in_tipo), NULL, EMB.IDIOMA, EMB.TIPO_DESCR_MERCADORIA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA order by FAMÍLIA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FATURA_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_FATURA_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, PEDIDO, ITEM, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PREÇO_UNIT, TOTAL_UNIT) SELECT MAXDOC, MAXITEM, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_item in (SELECT FAMÍLIA, PED_REF, PED_ITEM, DESCR, QTD_VOL, EMBALAGEM, PESO_LÍQUIDO, EXP_PREÇO_UNIT, CALC_EXP_EMB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA = CUR.FAMÍLIA order by FAMÍLIA, EMB_SEQ) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FATURA_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_FATURA_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, PEDIDO, ITEM, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PREÇO_UNIT, TOTAL_UNIT) SELECT MAXDOC, MAXITEM, null, cur_item.PED_REF, cur_item.PED_ITEM, cur_item.DESCR, cur_item.QTD_VOL, cur_item.EMBALAGEM, cur_item.PESO_LÍQUIDO, cur_item.EXP_PREÇO_UNIT, cur_item.CALC_EXP_EMB FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+			end loop;		
+			for cur_lanç in (SELECT SEQ, EXP_DESCR, EXP, EXP_CALC FROM EMB_TOTALIZA WHERE (EMB_REF = in_emb AND EXP = -1) OR (EMB_REF = in_emb AND EXP = 1) ORDER BY SEQ) loop
+				SELECT MAX(SEQ_LANC) INTO MAXLANC FROM CXRJ.DOC_FATURA_TOT WHERE DOC_SEQ = MAXDOC;
+	    			MAXLANC := NVL(MAXLANC,0)+1;
+		            	INSERT INTO CXRJ.DOC_FATURA_TOT (DOC_SEQ, SEQ_LANC, LANÇAMENTO, VALOR) SELECT MAXDOC, MAXLANC, cur_lanç.EXP_DESCR, cur_lanç.EXP_CALC FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+				COMMIT;
+			end loop;
+			SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FATURA_DET WHERE DOC_SEQ = MAXDOC;
+	    		MAXITEM := NVL(MAXITEM,0)+1;
+ 			INSERT INTO CXRJ.DOC_FATURA_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, PEDIDO, ITEM, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PREÇO_UNIT, TOTAL_UNIT) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+       		elsIf in_doc = 'DOC_FATURA' and in_tipo = 'IMP' then
+		        SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_FATURA;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_FATURA (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, SACADO_CIA_COD, SACADO_NOME, SACADO_ENDEREÇO, SACADO_PAÍS, SACADO_CONTATO, TÍTULO, REF_CIEX, DATA_DOC, MOEDA, FAT_VALOR, CARGA_EMBARQUE, CARGA_DESCARGA, TRANSPORTADOR, DESCR_BL, COND_PAG, UNID_PESO, UNID_VALOR, PESO_BRUTO, MENSAGEM, ASSINATURA, IDIOMA, DESCR_MERC, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.IMP_LOGOTIPO, EMB.IMP, EMB.IMP, EMB.IMP_ENDEREÇO || chr(13) || chr(10) || EMB.IMP_PAÍS, EMB.IMP_PAÍS, NULL, NULL, EMB.PAGADOR, EMB.PAG_ENDEREÇO, EMB.PAG_PAÍS, NULL, NULL, EMB.IMP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.MOEDA, ret_valor(in_Emb, in_tipo), EMB.CARGA_PORTO, EMB.DESCARGA_PORTO, EMB.TRANSPORTADOR, EMB.NUM_BL_DESCR, EMB.IMP_COND_PAG, EMB.PESO_UNID, EMB.PREÇO_UNITÁRIO_UNID, ret_peso(in_Emb), ret_msg(in_Emb, in_doc, in_tipo), NULL, EMB.IDIOMA, EMB.TIPO_DESCR_MERCADORIA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA order by FAMÍLIA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FATURA_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_FATURA_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, PEDIDO, ITEM, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PREÇO_UNIT, TOTAL_UNIT) SELECT MAXDOC, MAXITEM, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_item in (SELECT FAMÍLIA, PED_REF, PED_ITEM, DESCR, QTD_VOL, EMBALAGEM, PESO_LÍQUIDO, IMP_PREÇO_UNIT, CALC_IMP_EMB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA = CUR.FAMÍLIA order by FAMÍLIA, EMB_SEQ) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FATURA_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_FATURA_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, PEDIDO, ITEM, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PREÇO_UNIT, TOTAL_UNIT) SELECT MAXDOC, MAXITEM, null, cur_item.PED_REF, cur_item.PED_ITEM, cur_item.DESCR, cur_item.QTD_VOL, cur_item.EMBALAGEM, cur_item.PESO_LÍQUIDO, cur_item.IMP_PREÇO_UNIT, cur_item.CALC_IMP_EMB FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+			end loop;		
+			for cur_lanç in (SELECT SEQ, IMP_DESCR, IMP, IMP_CALC FROM EMB_TOTALIZA WHERE(EMB_REF = in_emb AND IMP = -1) OR (EMB_REF = in_emb AND IMP = 1) ORDER BY SEQ) loop
+				SELECT MAX(SEQ_LANC) INTO MAXLANC FROM CXRJ.DOC_FATURA_TOT WHERE DOC_SEQ = MAXDOC;
+	    			MAXLANC := NVL(MAXLANC,0)+1;
+		            	INSERT INTO CXRJ.DOC_FATURA_TOT (DOC_SEQ, SEQ_LANC, LANÇAMENTO, VALOR) SELECT MAXDOC, MAXLANC, cur_lanç.IMP_DESCR, cur_lanç.IMP_CALC FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+				COMMIT;
+			end loop;
+			SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FATURA_DET WHERE DOC_SEQ = MAXDOC;
+	    		MAXITEM := NVL(MAXITEM,0)+1;
+ 			INSERT INTO CXRJ.DOC_FATURA_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, PEDIDO, ITEM, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PREÇO_UNIT, TOTAL_UNIT) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+-- MERCOSUL
+      		elsIf in_doc = 'DOC_MERCOSUL' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_MERCOSUL;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			SELECT PAÍS_DESTINO INTO MERCOSUL_PAÍS FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by PAÍS_DESTINO;
+			SELECT VIA_TRANSPORTE INTO MERCOSUL_VIA_TRANSP FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by VIA_TRANSPORTE;
+			INSERT INTO CXRJ.DOC_MERCOSUL (DOC, COD_EXP, EXPORTADOR, EXP_ENDEREÇO, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_ENDEREÇO, IMP_PAÍS, COD_CONSIGN, CONSIGNATÁRIO, CONSIGN_PAÍS, LOCAL_EMBARQUE, DESTINO, TRANSPORTE, REF_CIEX, DATA_DOC, OBS, DECLARAÇÃO, DECLARAÇÃO_DATA, IDIOMA, UNID_PESO, MENSAGEM, MOEDA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.EXP, EMB.EXP_ENDEREÇO, EMB.EXP_PAÍS, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, EMB.CONSIGNATÁRIO || chr(13) || chr(10) || EMB.CONSIGN_ENDEREÇO || chr(13) || chr(10) || EMB.CONSIGN_PAÍS, EMB.CONSIGN_PAÍS, EMB.CARGA_PORTO, MERCOSUL_PAÍS, MERCOSUL_VIA_TRANSP, EMB.EXP_FAT, EMB.DATA_EMISSÃO_DOC, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.IDIOMA, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_NCM in (SELECT NCM FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NCM) loop
+					if length(cur_NCM.NCM) <> 0 THEN
+						for cur_item in (SELECT MIN(PED_REF) PED_REF, MIN(PED_ITEM) PED_ITEM, NCM FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM group by NCM) loop
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+				    			MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL,  ret_NCM_descr(cur_item.NCM, prod), NULL, NULL, NULL, NULL FROM PED_ITEM WHERE PED_REF = CUR_ITEM.PED_REF AND ITEM = CUR_ITEM.PED_ITEM; 
+							COMMIT;						
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NCM, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM group by EMBALAGEM, NCM) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(CALC_EXP_FOB) FOB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = cur_ordem.NCM group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+									MAXORDEM := NVL(MAXORDEM,0)+1;
+									INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+						end loop;
+					end if;
+				end loop;
+			end loop;
+       		elsIf in_doc = 'DOC_MERCOSUL' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_MERCOSUL;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			SELECT PAÍS_DESTINO INTO MERCOSUL_PAÍS FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by PAÍS_DESTINO;
+			SELECT VIA_TRANSPORTE INTO MERCOSUL_VIA_TRANSP FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by VIA_TRANSPORTE;
+			INSERT INTO CXRJ.DOC_MERCOSUL (DOC, COD_EXP, EXPORTADOR, EXP_ENDEREÇO, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_ENDEREÇO, IMP_PAÍS, COD_CONSIGN, CONSIGNATÁRIO, CONSIGN_PAÍS, LOCAL_EMBARQUE, DESTINO, TRANSPORTE, REF_CIEX, DATA_DOC, OBS, DECLARAÇÃO, DECLARAÇÃO_DATA, IDIOMA, UNID_PESO, MENSAGEM, MOEDA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, EMB.PAGADOR, EMB.PAG_ENDEREÇO, EMB.PAG_PAÍS, NULL, EMB.CONSIGNATÁRIO || chr(13) || chr(10) || EMB.CONSIGN_ENDEREÇO || chr(13) || chr(10) || EMB.CONSIGN_PAÍS, EMB.CONSIGN_PAÍS, EMB.CARGA_PORTO, MERCOSUL_PAÍS, MERCOSUL_VIA_TRANSP, EMB.IMP_FAT, EMB.DATA_EMISSÃO_DOC, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.IDIOMA, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_NCM in (SELECT NCM FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NCM) loop
+					if length(cur_NCM.NCM) <> 0 THEN
+						for cur_item in (SELECT MIN(PED_REF) PED_REF, MIN(PED_ITEM) PED_ITEM, NCM FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM group by NCM) loop
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+				    			MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL,  ret_NCM_descr(cur_item.NCM, prod), NULL, NULL, NULL, NULL FROM PED_ITEM WHERE PED_REF = CUR_ITEM.PED_REF AND ITEM = CUR_ITEM.PED_ITEM; 
+							COMMIT;						
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NCM, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM group by EMBALAGEM, NCM) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(CALC_IMP_FOB) FOB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = cur_ordem.NCM group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+									MAXORDEM := NVL(MAXORDEM,0)+1;
+									INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NCM.NCM, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NCM, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+						end loop;
+					end if;
+				end loop;
+			end loop;
+-- MERCOSUL CHILE
+       		elsIf in_doc = 'DOC_MERCOSUL_CHILE' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_MERCOSUL_CHILE;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			SELECT PAÍS_DESTINO INTO MERCOSUL_PAÍS FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by PAÍS_DESTINO;
+			SELECT VIA_TRANSPORTE INTO MERCOSUL_VIA_TRANSP FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by VIA_TRANSPORTE;
+			INSERT INTO CXRJ.DOC_MERCOSUL_CHILE (DOC, COD_EXP, EXPORTADOR, EXP_ENDEREÇO, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_ENDEREÇO, IMP_PAÍS, COD_CONSIGN, CONSIGNATÁRIO, CONSIGN_PAÍS, LOCAL_EMBARQUE, DESTINO, TRANSPORTE, REF_CIEX, DATA_DOC, OBS, DECLARAÇÃO, DECLARAÇÃO_DATA, IDIOMA, UNID_PESO, MENSAGEM, MOEDA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.EXP, EMB.EXP_ENDEREÇO, EMB.EXP_PAÍS, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, EMB.CONSIGNATÁRIO || chr(13) || chr(10) || EMB.CONSIGN_ENDEREÇO || chr(13) || chr(10) || EMB.CONSIGN_PAÍS, EMB.CONSIGN_PAÍS, EMB.CARGA_PORTO, MERCOSUL_PAÍS, MERCOSUL_VIA_TRANSP, EMB.EXP_FAT, EMB.DATA_EMISSÃO_DOC, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.IDIOMA, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_NALADI in (SELECT NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NALADI) loop
+					if length(cur_NALADI.NALADI) <> 0 THEN
+						for cur_item in (SELECT MIN(PED_REF) PED_REF, MIN(PED_ITEM) PED_ITEM, NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by NALADI) loop
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+				    			MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL,  ret_NALADI_descr(cur_item.NALADI, prod), NULL, NULL, NULL, NULL FROM PED_ITEM WHERE PED_REF = CUR_ITEM.PED_REF AND ITEM = CUR_ITEM.PED_ITEM; 
+							COMMIT;
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NALADI, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by EMBALAGEM, NALADI) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(CALC_EXP_FOB) FOB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = cur_ordem.NALADI group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+									MAXORDEM := NVL(MAXORDEM,0)+1;
+									INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+						end loop;
+					end if;
+				end loop;
+			end loop;
+       		elsIf in_doc = 'DOC_MERCOSUL_CHILE' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_MERCOSUL_CHILE;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			SELECT PAÍS_DESTINO INTO MERCOSUL_PAÍS FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by PAÍS_DESTINO;
+			SELECT VIA_TRANSPORTE INTO MERCOSUL_VIA_TRANSP FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by VIA_TRANSPORTE;
+			INSERT INTO CXRJ.DOC_MERCOSUL_CHILE (DOC, COD_EXP, EXPORTADOR, EXP_ENDEREÇO, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_ENDEREÇO, IMP_PAÍS, COD_CONSIGN, CONSIGNATÁRIO, CONSIGN_PAÍS, LOCAL_EMBARQUE, DESTINO, TRANSPORTE, REF_CIEX, DATA_DOC, OBS, DECLARAÇÃO, DECLARAÇÃO_DATA, IDIOMA, UNID_PESO, MENSAGEM, MOEDA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, EMB.PAGADOR, EMB.PAG_ENDEREÇO, EMB.PAG_PAÍS, NULL, EMB.CONSIGNATÁRIO || chr(13) || chr(10) || EMB.CONSIGN_ENDEREÇO || chr(13) || chr(10) || EMB.CONSIGN_PAÍS, EMB.CONSIGN_PAÍS, EMB.CARGA_PORTO, MERCOSUL_PAÍS, MERCOSUL_VIA_TRANSP, EMB.IMP_FAT, EMB.DATA_EMISSÃO_DOC, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.IDIOMA, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_NALADI in (SELECT NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NALADI) loop
+					if length(cur_NALADI.NALADI) <> 0 THEN
+						for cur_item in (SELECT MIN(PED_REF) PED_REF, MIN(PED_ITEM) PED_ITEM, NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by NALADI) loop
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+				    			MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL,  ret_NALADI_descr(cur_item.NALADI, prod), NULL, NULL, NULL, NULL FROM PED_ITEM WHERE PED_REF = CUR_ITEM.PED_REF AND ITEM = CUR_ITEM.PED_ITEM; 
+							COMMIT;						
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NALADI, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by EMBALAGEM, NALADI) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(CALC_IMP_FOB) FOB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = cur_ordem.NALADI group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+									MAXORDEM := NVL(MAXORDEM,0)+1;
+									INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+						end loop;
+					end if;
+				end loop;
+			end loop;
+-- MERCOSUL BOLIVIA
+       		elsIf in_doc = 'DOC_MERCOSUL_BOLIV' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_MERCOSUL_BOLIV;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			SELECT PAÍS_DESTINO INTO MERCOSUL_PAÍS FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by PAÍS_DESTINO;
+			SELECT VIA_TRANSPORTE INTO MERCOSUL_VIA_TRANSP FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by VIA_TRANSPORTE;
+			INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV (DOC, COD_EXP, EXPORTADOR, EXP_ENDEREÇO, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_ENDEREÇO, IMP_PAÍS, COD_CONSIGN, CONSIGNATÁRIO, CONSIGN_PAÍS, LOCAL_EMBARQUE, DESTINO, TRANSPORTE, REF_CIEX, DATA_DOC, OBS, DECLARAÇÃO, DECLARAÇÃO_DATA, IDIOMA, UNID_PESO, MENSAGEM, MOEDA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.EXP, EMB.EXP_ENDEREÇO, EMB.EXP_PAÍS, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, EMB.CONSIGNATÁRIO || chr(13) || chr(10) || EMB.CONSIGN_ENDEREÇO || chr(13) || chr(10) || EMB.CONSIGN_PAÍS, EMB.CONSIGN_PAÍS, EMB.CARGA_PORTO, MERCOSUL_PAÍS, MERCOSUL_VIA_TRANSP, EMB.EXP_FAT, EMB.DATA_EMISSÃO_DOC, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.IDIOMA, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_NALADI in (SELECT NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NALADI) loop
+					if length(cur_NALADI.NALADI) <> 0 THEN
+						for cur_item in (SELECT MIN(PED_REF) PED_REF, MIN(PED_ITEM) PED_ITEM, NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by NALADI) loop
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+				    			MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL,  ret_NALADI_descr(cur_item.NALADI, prod), NULL, NULL, NULL, NULL FROM PED_ITEM WHERE PED_REF = CUR_ITEM.PED_REF AND ITEM = CUR_ITEM.PED_ITEM; 
+							COMMIT;						
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NALADI, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by EMBALAGEM, NALADI) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(CALC_EXP_FOB) FOB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = cur_ordem.NALADI group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+									MAXORDEM := NVL(MAXORDEM,0)+1;
+									INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_EXP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+						end loop;
+					end if;
+				end loop;
+			end loop;
+       		elsIf in_doc = 'DOC_MERCOSUL_BOLIV' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_MERCOSUL_BOLIV;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			SELECT PAÍS_DESTINO INTO MERCOSUL_PAÍS FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by PAÍS_DESTINO;
+			SELECT VIA_TRANSPORTE INTO MERCOSUL_VIA_TRANSP FROM PED, BL_CARGA WHERE PED.REF = BL_CARGA.PED_REF(+) AND BL_CARGA.EMB_REF = in_emb group by VIA_TRANSPORTE;
+			INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV (DOC, COD_EXP, EXPORTADOR, EXP_ENDEREÇO, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_ENDEREÇO, IMP_PAÍS, COD_CONSIGN, CONSIGNATÁRIO, CONSIGN_PAÍS, LOCAL_EMBARQUE, DESTINO, TRANSPORTE, REF_CIEX, DATA_DOC, OBS, DECLARAÇÃO, DECLARAÇÃO_DATA, IDIOMA, UNID_PESO, MENSAGEM, MOEDA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, EMB.PAGADOR, EMB.PAG_ENDEREÇO, EMB.PAG_PAÍS, NULL, EMB.CONSIGNATÁRIO || chr(13) || chr(10) || EMB.CONSIGN_ENDEREÇO || chr(13) || chr(10) || EMB.CONSIGN_PAÍS, EMB.CONSIGN_PAÍS, EMB.CARGA_PORTO, MERCOSUL_PAÍS, MERCOSUL_VIA_TRANSP, EMB.IMP_FAT, EMB.DATA_EMISSÃO_DOC, NULL, NULL, EMB.DATA_EMISSÃO_DOC, EMB.IDIOMA, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_NALADI in (SELECT NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NALADI) loop
+					if length(cur_NALADI.NALADI) <> 0 THEN
+						for cur_item in (SELECT MIN(PED_REF) PED_REF, MIN(PED_ITEM) PED_ITEM, NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by NALADI) loop
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+				    			MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL,  ret_NALADI_descr(cur_item.NALADI, prod), NULL, NULL, NULL, NULL FROM PED_ITEM WHERE PED_REF = CUR_ITEM.PED_REF AND ITEM = CUR_ITEM.PED_ITEM; 
+							COMMIT;						
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NALADI, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by EMBALAGEM, NALADI) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(CALC_IMP_FOB) FOB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = cur_ordem.NALADI group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+									MAXORDEM := NVL(MAXORDEM,0)+1;
+									INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, DESCRIÇÃO, VOLUME, EMBALAGEM, PESO_LÍQUIDO, VALOR_FOB) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(CALC_IMP_FOB) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+						end loop;
+					end if;
+				end loop;
+			end loop;
+-- SAQUE 2V
+       		elsIf in_doc = 'DOC_SAQUE_2V' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_SAQUE_2V;
+			SELECT EXP_CALC INTO VALOR_SAQUE FROM EMB_TOTALIZA WHERE (EMB_TOTALIZA.EMB_REF = in_emb AND LANÇ = 'TOTAL GERAL' AND EXP = -1) OR (EMB_TOTALIZA.EMB_REF = in_emb AND LANÇ = 'TOTAL GERAL' AND EXP = 1);
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_SAQUE_2V (DOC, ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, COND_PAG, DATA_DOC, MENSAGEM, MOEDA, ORIGEM_CIA_COD, ORIGEM_ESTADO, ORIGEM_NOME, SACADO_CIA_COD, SACADO_NOME, SAQ_VALOR, SUPERVISOR, TÍTULO, VALOR_EXT, IDIOMA, MENSAGEM_COMP, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, NULL, NULL, EMB.EXP_COND_PAG, EMB.DATA_EMISSÃO_DOC, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.EXP_LOGOTIPO, NULL, EMB.EXP, NULL, NULL, VALOR_SAQUE, NULL, NULL, LB.LExtenso(VALOR_SAQUE, EMB.MOEDA), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+       		elsIf in_doc = 'DOC_SAQUE_2V' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_SAQUE_2V;
+			SELECT IMP_CALC INTO VALOR_SAQUE FROM EMB_TOTALIZA WHERE (EMB_TOTALIZA.EMB_REF = in_emb AND LANÇ = 'TOTAL GERAL' AND IMP = -1) OR (EMB_TOTALIZA.EMB_REF = in_emb AND LANÇ = 'TOTAL GERAL' AND IMP = 1);
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_SAQUE_2V (DOC, ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, COND_PAG, DATA_DOC, MENSAGEM, MOEDA, ORIGEM_CIA_COD, ORIGEM_ESTADO, ORIGEM_NOME, SACADO_CIA_COD, SACADO_NOME, SAQ_VALOR, SUPERVISOR, TÍTULO, VALOR_EXT, IDIOMA, MENSAGEM_COMP, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, NULL, NULL, EMB.IMP_COND_PAG, EMB.DATA_EMISSÃO_DOC, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.IMP_LOGOTIPO, NULL, EMB.IMP, NULL, NULL, VALOR_SAQUE, NULL, NULL, LB.LExtenso(VALOR_SAQUE, EMB.MOEDA), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+-- SAQUE 3V
+       		elsIf in_doc = 'DOC_SAQUE_3V' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_SAQUE_3V;
+			SELECT EXP_CALC INTO VALOR_SAQUE FROM EMB_TOTALIZA WHERE (EMB_TOTALIZA.EMB_REF = in_emb AND LANÇ = 'TOTAL GERAL' AND EXP = -1) OR (EMB_TOTALIZA.EMB_REF = in_emb AND LANÇ = 'TOTAL GERAL' AND EXP = 1);
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_SAQUE_3V (DOC, ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, COND_PAG, DATA_DOC, MENSAGEM, MOEDA, ORIGEM_CIA_COD, ORIGEM_ESTADO, ORIGEM_NOME, SACADO_CIA_COD, SACADO_NOME, SAQ_VALOR, SUPERVISOR, TÍTULO, VALOR_EXT, IDIOMA, MENSAGEM_COMP, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, NULL, NULL, EMB.EXP_COND_PAG, EMB.DATA_EMISSÃO_DOC, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.EXP_LOGOTIPO, NULL, EMB.EXP, NULL, NULL, VALOR_SAQUE, NULL, NULL, LB.LExtenso(VALOR_SAQUE, EMB.MOEDA), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+       		elsIf in_doc = 'DOC_SAQUE_3V' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_SAQUE_3V;
+			SELECT IMP_CALC INTO VALOR_SAQUE FROM EMB_TOTALIZA WHERE (EMB_TOTALIZA.EMB_REF = in_emb AND LANÇ = 'TOTAL GERAL' AND IMP = -1) OR (EMB_TOTALIZA.EMB_REF = in_emb AND LANÇ = 'TOTAL GERAL' AND IMP = 1);
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_SAQUE_3V (DOC, ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, COND_PAG, DATA_DOC, MENSAGEM, MOEDA, ORIGEM_CIA_COD, ORIGEM_ESTADO, ORIGEM_NOME, SACADO_CIA_COD, SACADO_NOME, SAQ_VALOR, SUPERVISOR, TÍTULO, VALOR_EXT, IDIOMA, MENSAGEM_COMP, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, NULL, NULL, EMB.IMP_COND_PAG, EMB.DATA_EMISSÃO_DOC, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.IMP_LOGOTIPO, NULL, EMB.IMP, NULL, NULL, VALOR_SAQUE, NULL, NULL, LB.LExtenso(VALOR_SAQUE, EMB.MOEDA), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+-- SAQUE JUROS 2V
+       		elsIf in_doc = 'DOC_SAQUE_JUROS_2V' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_SAQUE_JUROS_2V;
+			SELECT EXP_CALC INTO VALOR_JUROS FROM EMB_LANÇ WHERE (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND EXP = -1) OR (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND EXP = 1);
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_SAQUE_JUROS_2V (DOC, ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, COND_PAG, DATA_DOC, MENSAGEM, MOEDA, ORIGEM_CIA_COD, ORIGEM_ESTADO, ORIGEM_NOME, SACADO_CIA_COD, SACADO_NOME, SAQ_VALOR, SUPERVISOR, TÍTULO, VALOR_EXT, IDIOMA, MENSAGEM_COMP, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, NULL, NULL, EMB.EXP_COND_PAG, EMB.DATA_EMISSÃO_DOC, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.EXP_LOGOTIPO, NULL, EMB.EXP, NULL, NULL, VALOR_JUROS, NULL, NULL, LB.LExtenso(VALOR_JUROS, EMB.MOEDA), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+       		elsIf in_doc = 'DOC_SAQUE_JUROS_2V' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_SAQUE_JUROS_2V;
+			SELECT IMP_CALC INTO VALOR_JUROS FROM EMB_LANÇ WHERE (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND IMP = -1) OR (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND IMP = 1) ;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_SAQUE_JUROS_2V (DOC, ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, COND_PAG, DATA_DOC, MENSAGEM, MOEDA, ORIGEM_CIA_COD, ORIGEM_ESTADO, ORIGEM_NOME, SACADO_CIA_COD, SACADO_NOME, SAQ_VALOR, SUPERVISOR, TÍTULO, VALOR_EXT, IDIOMA, MENSAGEM_COMP, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, NULL, NULL, EMB.IMP_COND_PAG, EMB.DATA_EMISSÃO_DOC, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.IMP_LOGOTIPO, NULL, EMB.IMP, NULL, NULL, VALOR_JUROS, NULL, NULL, LB.LExtenso(VALOR_JUROS, EMB.MOEDA), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+-- SAQUE JUROS 3V
+       		elsIf in_doc = 'DOC_SAQUE_JUROS_3V' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_SAQUE_JUROS_3V;
+			SELECT EXP_CALC INTO VALOR_JUROS FROM EMB_LANÇ WHERE (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND EXP = -1) OR (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND EXP = 1);
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_SAQUE_JUROS_3V (DOC, ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, COND_PAG, DATA_DOC, MENSAGEM, MOEDA, ORIGEM_CIA_COD, ORIGEM_ESTADO, ORIGEM_NOME, SACADO_CIA_COD, SACADO_NOME, SAQ_VALOR, SUPERVISOR, TÍTULO, VALOR_EXT, IDIOMA, MENSAGEM_COMP, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, NULL, NULL, EMB.EXP_COND_PAG, EMB.DATA_EMISSÃO_DOC, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.EXP_LOGOTIPO, NULL, EMB.EXP, NULL, NULL, VALOR_JUROS, NULL, NULL, LB.LExtenso(VALOR_JUROS, EMB.MOEDA), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+       		elsIf in_doc = 'DOC_SAQUE_JUROS_3V' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_SAQUE_JUROS_3V;
+			SELECT IMP_CALC INTO VALOR_JUROS FROM EMB_LANÇ WHERE (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND IMP = -1) OR (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND IMP = 1);
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_SAQUE_JUROS_3V (DOC, ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, COND_PAG, DATA_DOC, MENSAGEM, MOEDA, ORIGEM_CIA_COD, ORIGEM_ESTADO, ORIGEM_NOME, SACADO_CIA_COD, SACADO_NOME, SAQ_VALOR, SUPERVISOR, TÍTULO, VALOR_EXT, IDIOMA, MENSAGEM_COMP, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, NULL, NULL, EMB.IMP_COND_PAG, EMB.DATA_EMISSÃO_DOC, ret_msg(in_Emb, in_doc, in_tipo), EMB.MOEDA, EMB.IMP_LOGOTIPO, NULL, EMB.IMP, NULL, NULL, VALOR_JUROS, NULL, NULL, LB.LExtenso(VALOR_JUROS, EMB.MOEDA), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+-- PACKING LIST / WEIGHT CERTIFICATE
+       		elsIf in_doc = 'DOC_PLIST_WEIG_CERT' and in_tipo = 'EXP' then
+		        SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_PLIST_WEIG_CERT;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+	 		INSERT INTO CXRJ.DOC_PLIST_WEIG_CERT (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, SACADO_CIA_COD, SACADO_NOME, SACADO_ENDEREÇO, SACADO_PAÍS, SACADO_CONTATO, TÍTULO, REF_CIEX, DATA_DOC, CARGA_EMBARQUE, CARGA_DESCARGA, TRANSPORTADOR, UNID_PESO, MENSAGEM, ASSINATURA, IDIOMA, DESCR_MERC, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.EXP_LOGOTIPO, EMB.EXP, EMB.EXP, EMB.EXP_ENDEREÇO || chr(13) || chr(10) || EMB.EXP_PAÍS, EMB.EXP_PAÍS, NULL, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, NULL, EMB.EXP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.CARGA_PORTO, EMB.DESCARGA_PORTO, EMB.TRANSPORTADOR, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), NULL, EMB.IDIOMA, EMB.TIPO_DESCR_MERCADORIA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+			for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_PLIST_WEIG_CERT_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_PLIST_WEIG_CERT_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_item in (SELECT FAMÍLIA, DESCR, QTD_VOL, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA, EMB_SEQ) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_PLIST_WEIG_CERT_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_PLIST_WEIG_CERT_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, null, cur_item.DESCR, cur_item.QTD_VOL, cur_item.EMBALAGEM, cur_item.PESO_LÍQUIDO, cur_item.PESO_BRUTO FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+			end loop;		
+       		elsIf in_doc = 'DOC_PLIST_WEIG_CERT' and in_tipo = 'IMP' then
+		        SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_PLIST_WEIG_CERT;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+	 		INSERT INTO CXRJ.DOC_PLIST_WEIG_CERT (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, SACADO_CIA_COD, SACADO_NOME, SACADO_ENDEREÇO, SACADO_PAÍS, SACADO_CONTATO, TÍTULO, REF_CIEX, DATA_DOC, CARGA_EMBARQUE, CARGA_DESCARGA, TRANSPORTADOR, UNID_PESO, MENSAGEM, ASSINATURA, IDIOMA, DESCR_MERC, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.IMP_LOGOTIPO, EMB.IMP, EMB.IMP, EMB.IMP_ENDEREÇO || chr(13) || chr(10) || EMB.IMP_PAÍS, EMB.IMP_PAÍS, NULL, NULL, EMB.PAGADOR, EMB.PAG_ENDEREÇO, EMB.PAG_PAÍS, NULL, NULL, EMB.IMP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.CARGA_PORTO, EMB.DESCARGA_PORTO, EMB.TRANSPORTADOR, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), NULL, EMB.IDIOMA, EMB.TIPO_DESCR_MERCADORIA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+			for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_PLIST_WEIG_CERT_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_PLIST_WEIG_CERT_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+				for cur_item in (SELECT FAMÍLIA, DESCR, QTD_VOL, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA, EMB_SEQ) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_PLIST_WEIG_CERT_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_PLIST_WEIG_CERT_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, MEDIDAS, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, null, cur_item.DESCR, cur_item.QTD_VOL, cur_item.EMBALAGEM, cur_item.PESO_LÍQUIDO, cur_item.PESO_BRUTO FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+				end loop;
+			end loop;		
+--ALADI
+       		elsIf in_doc = 'DOC_ALADI' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_ALADI;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_ALADI (DOC, IMP_PAÍS, REF_CIEX, DECLARAÇÃO, DATA_DOC, OBS, IDIOMA, UNID_PESO, MENSAGEM, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.IMP_PAÍS, EMB.EXP_FAT, NULL, EMB.DATA_EMISSÃO_DOC, NULL, EMB.IDIOMA, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+			SELECT MAX(SEQ_NORMA) INTO MAXORDEM FROM CXRJ.DOC_ALADI_NORMA WHERE DOC_SEQ = MAXDOC;
+			MAXORDEM := NVL(MAXORDEM,0)+1;
+			INSERT INTO CXRJ.DOC_ALADI_NORMA (DOC_SEQ, SEQ_NORMA, NORMA) VALUES (MAXDOC, MAXORDEM, ' ');	
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+					for cur_NALADI in (SELECT NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NALADI) loop
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NALADI, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by EMBALAGEM, NALADI) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(PESO_BRUTO) FOB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = cur_ordem.NALADI group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+									MAXORDEM := NVL(MAXORDEM,0)+1;
+									INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+					end loop;
+				end loop;
+			end loop;
+       		elsIf in_doc = 'DOC_ALADI' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_ALADI;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_ALADI (DOC, IMP_PAÍS, REF_CIEX, DECLARAÇÃO, DATA_DOC, OBS, IDIOMA, UNID_PESO, MENSAGEM, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.PAG_PAÍS, EMB.IMP_FAT, NULL, EMB.DATA_EMISSÃO_DOC, NULL, EMB.IDIOMA, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+			SELECT MAX(SEQ_NORMA) INTO MAXORDEM FROM CXRJ.DOC_ALADI_NORMA WHERE DOC_SEQ = MAXDOC;
+			MAXORDEM := NVL(MAXORDEM,0)+1;
+			INSERT INTO CXRJ.DOC_ALADI_NORMA (DOC_SEQ, SEQ_NORMA, NORMA) VALUES (MAXDOC, MAXORDEM, ' ');	
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+					for cur_NALADI in (SELECT NALADI FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NALADI) loop
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NALADI, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI group by EMBALAGEM, NALADI) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(PESO_BRUTO) FOB FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = cur_ordem.NALADI group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+										MAXORDEM := NVL(MAXORDEM,0)+1;
+										INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+									MAXORDEM := NVL(MAXORDEM,0)+1;
+									INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, MAXORDEM, CUR_NALADI.NALADI, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT MAX(ORDEM) INTO MAXORDEM FROM CXRJ.DOC_ALADI_DET WHERE DOC_SEQ = MAXDOC;
+											MAXORDEM := NVL(MAXORDEM,0)+1;
+											INSERT INTO CXRJ.DOC_ALADI_DET (DOC_SEQ, SEQ_ITEM, ORDEM, NALADI, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NALADI = CUR_NALADI.NALADI AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+					end loop;
+				end loop;
+			end loop;
+--FIRJAN
+       		elsIf in_doc = 'DOC_FIRJAN' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_FIRJAN;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_FIRJAN (DOC, COD_EXP, EXPORTADOR, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_PAÍS, COD_CONSIGN, CONSIGNATÁRIO, CONSIGN_PAÍS, REF_CIEX, DATA_DOC, UNID_PESO, MENSAGEM, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.EXP, EMB.EXP_PAÍS, NULL, EMB.IMP, EMB.IMP_PAÍS, NULL, EMB.CONSIGNATÁRIO || chr(13) || chr(10) || EMB.CONSIGN_ENDEREÇO , EMB.CONSIGN_PAÍS, EMB.EXP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+					for cur_NCM in (SELECT NCM FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NCM) loop
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NCM, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM group by EMBALAGEM, NCM) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(PESO_BRUTO) BRUTO FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = cur_ordem.NCM group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (cur_ordem.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+					end loop;
+				end loop;
+			end loop;
+       		elsIf in_doc = 'DOC_FIRJAN' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_FIRJAN;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_FIRJAN (DOC, COD_EXP, EXPORTADOR, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_PAÍS, COD_CONSIGN, CONSIGNATÁRIO, CONSIGN_PAÍS, REF_CIEX, DATA_DOC, UNID_PESO, MENSAGEM, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.IMP, EMB.IMP_PAÍS, NULL, EMB.PAGADOR, EMB.PAG_PAÍS, NULL, EMB.CONSIGNATÁRIO || chr(13) || chr(10) || EMB.CONSIGN_ENDEREÇO , EMB.CONSIGN_PAÍS, EMB.IMP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.PESO_UNID, ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+					for cur_NCM in (SELECT NCM FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NCM) loop
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NCM, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM group by EMBALAGEM, NCM) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(PESO_BRUTO) BRUTO FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = cur_ordem.NCM group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_FIRJAN_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											INSERT INTO CXRJ.DOC_FIRJAN_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+					end loop;
+				end loop;
+			end loop;
+-- CONHECIMENTO RODOVIARIO 
+    		elsIf in_doc = 'DOC_CONHECIMENT_ROD' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_CONHECIMENT_ROD;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+	 		INSERT INTO CXRJ.DOC_CONHECIMENT_ROD (DOC, TÍTULO, IDIOMA, DATA_DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, TRANSPORTADOR_CIA_COD, TRANSPORTADOR, TRANSPORTADOR_ENDEREÇO, TRANSPORTADOR_PAÍS, TRANSPORTADOR_CONTATO, REMETENTE_CIA_COD, REMETENTE, REMETENTE_ENDEREÇO, REMETENTE_PAÍS, DESTINATÁRIO_CIA_COD, DESTINATÁRIO, DESTINATÁRIO_ENDEREÇO, DESTINATÁRIO_PAÍS, CONSIGNATÁRIO_CIA_COD, CONSIGNATÁRIO, CONSIGNATÁRIO_ENDEREÇO, CONSIGNATÁRIO_PAÍS, MOEDA, REF_CIEX, CARGA_EMBARQUE, CARGA_DESCARGA, MARCAÇÃO, REF_RE, MENSAGEM, ASSINATURA, UNID_PESO, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_CONTATO, DESTINO_PAÍS, VALOR, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.IDIOMA, EMB.DATA_EMISSÃO_DOC, 'INTERMESA RJ', 'Intermesa Trading Ltda', 'Intermesa Trading Ltda',' Av. Presidente Vargas -  482 - 17 Andar (Parte) - Centro  '|| chr(13) || chr(10) ||'Rio de Janeiro - RJ - 20071-000'|| chr(13) || chr(10) ||'Barsil', 'Brasil', NULL, NULL, NOTIFICAR, NOTIFICAR_ENDEREÇO || chr(13) || chr(10) || NOTIFICAR_PAÍS, NOTIFICAR_PAÍS, NULL, NULL, EMB.EXP, EMB.EXP_ENDEREÇO || chr(13) || chr(10) || EMB.EXP_PAÍS, EMB.EXP_PAÍS, NULL, EMB.IMP, EMB.IMP_ENDEREÇO || chr(13) || chr(10) || EMB.IMP_PAÍS, EMB.IMP_PAÍS, NULL, EMB.CONSIGNATÁRIO, EMB.CONSIGN_ENDEREÇO || chr(13) || chr(10) || EMB.CONSIGN_PAÍS, EMB.CONSIGN_PAÍS, EMB.MOEDA, EMB.EXP_FAT, EMB.CARGA_PORTO, EMB.DESCARGA_PORTO, NULL, RET_RE(in_Emb), ret_msg(in_Emb, in_doc, in_tipo), NULL, EMB.PESO_UNID, NULL, NULL, NULL, NULL, NULL, ret_valor(in_Emb, in_tipo), EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+					EMB_TESTE := 'INICIO';
+					GR_VOL := 0;
+					CTR_NCM := FALSE;
+					for cur_emba in (SELECT EMBALAGEM, LEXTRAI(in_emb, UPPER(EMBALAGEM),'+') EMB_PADRÃO, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(PESO_BRUTO) BRUTO FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by EMBALAGEM, EMB_PADRÃO ORDER BY EMB_PADRÃO) loop
+						IF EMB_TESTE = 'INICIO' THEN
+							EMB_TESTE := cur_emba.EMB_PADRÃO;
+						END IF;						
+						if EMB_TESTE = cur_emba.EMB_PADRÃO THEN
+							GR_VOL := GR_VOL + CUR_EMBA.QTD_VOL;
+							EMB_ANTER := UPPER(cur_emba.embalagem);
+						ELSE
+							IF (GR_VOL) > 1 THEN	
+								SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+								MAXITEM := NVL(MAXITEM,0)+1;
+								INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, SUM(QTD_VOL), EMB_TESTE, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND UPPER(EMBALAGEM) LIKE SUBSTR(EMB_TESTE,-LENGTH(EMB_TESTE),LENGTH(EMB_TESTE) -1) ||'%'; 
+								COMMIT;
+							ELSE
+								SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+								MAXITEM := NVL(MAXITEM,0)+1;
+								INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, SUM(QTD_VOL), EMB_ANTER, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND UPPER(EMBALAGEM) = EMB_ANTER; 
+								COMMIT;
+							end if;
+							GR_VOL := CUR_EMBA.QTD_VOL;
+							EMB_TESTE := cur_emba.emb_padrão;
+							EMB_ANTER := cur_emba.embalagem;	
+							IF NVL(cur_emba.emb_padrão,' ') = ' ' then
+								EMB_TESTE := UPPER(cur_emba.embalagem);
+								EMB_ANTER := UPPER(cur_emba.embalagem);	
+							END IF;
+						end if;
+						CTR_NCM := TRUE;
+					end loop;						
+					IF CTR_NCM = TRUE THEN
+						IF (GR_VOL) > 1 THEN	
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+							MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, SUM(QTD_VOL), EMB_TESTE, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND UPPER(EMBALAGEM) = EMB_TESTE; 
+							COMMIT;
+						ELSE
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+							MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, SUM(QTD_VOL), EMB_ANTER, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND UPPER(EMBALAGEM) = EMB_ANTER; 
+							COMMIT;
+						end if;
+					END IF;
+				end loop;
+			end loop;
+       		elsIf in_doc = 'DOC_CONHECIMENT_ROD' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_CONHECIMENT_ROD;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+	 		INSERT INTO CXRJ.DOC_CONHECIMENT_ROD (DOC, TÍTULO, IDIOMA, DATA_DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, TRANSPORTADOR_CIA_COD, TRANSPORTADOR, TRANSPORTADOR_ENDEREÇO, TRANSPORTADOR_PAÍS, TRANSPORTADOR_CONTATO, REMETENTE_CIA_COD, REMETENTE, REMETENTE_ENDEREÇO, REMETENTE_PAÍS, DESTINATÁRIO_CIA_COD, DESTINATÁRIO, DESTINATÁRIO_ENDEREÇO, DESTINATÁRIO_PAÍS, CONSIGNATÁRIO_CIA_COD, CONSIGNATÁRIO, CONSIGNATÁRIO_ENDEREÇO, CONSIGNATÁRIO_PAÍS, MOEDA, REF_CIEX, CARGA_EMBARQUE, CARGA_DESCARGA, MARCAÇÃO, REF_RE, MENSAGEM, ASSINATURA, UNID_PESO, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_CONTATO, DESTINO_PAÍS, VALOR, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.IDIOMA, EMB.DATA_EMISSÃO_DOC, 'INTERMESA RJ', 'Intermesa Trading Ltda', 'Intermesa Trading Ltda',' Av. Presidente Vargas -  482 - 17 Andar (Parte) - Centro  '|| chr(13) || chr(10) ||'Rio de Janeiro - RJ - 20071-000'|| chr(13) || chr(10) ||'Barsil', 'Brasil', NULL, NULL, NOTIFICAR, NOTIFICAR_ENDEREÇO || chr(13) || chr(10) || NOTIFICAR_PAÍS, NOTIFICAR_PAÍS, NULL, NULL, EMB.EXP, EMB.EXP_ENDEREÇO || chr(13) || chr(10) || EMB.EXP_PAÍS, EMB.EXP_PAÍS, NULL, EMB.PAGADOR, EMB.PAG_ENDEREÇO || chr(13) || chr(10) || EMB.PAG_PAÍS, EMB.PAG_PAÍS, NULL, EMB.CONSIGNATÁRIO, EMB.CONSIGN_ENDEREÇO || chr(13) || chr(10) || EMB.CONSIGN_PAÍS, EMB.CONSIGN_PAÍS, EMB.MOEDA, EMB.IMP_FAT, EMB.CARGA_PORTO, EMB.DESCARGA_PORTO, NULL, RET_RE(in_Emb), ret_msg(in_Emb, in_doc, in_tipo), NULL, EMB.PESO_UNID, NULL, NULL, NULL, NULL, NULL, ret_valor(in_Emb, in_tipo), EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, cur_fam.FAMÍLIA, NULL, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+					EMB_TESTE := 'INICIO';
+					GR_VOL := 0;
+					CTR_NCM := FALSE;
+					for cur_emba in (SELECT EMBALAGEM, LEXTRAI(in_emb, UPPER(EMBALAGEM),'+') EMB_PADRÃO, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO, SUM(PESO_BRUTO) BRUTO FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by EMBALAGEM, EMB_PADRÃO ORDER BY EMB_PADRÃO) loop
+						IF EMB_TESTE = 'INICIO' THEN
+							EMB_TESTE := cur_emba.EMB_PADRÃO;
+						END IF;						
+						if EMB_TESTE = cur_emba.EMB_PADRÃO THEN
+							GR_VOL := GR_VOL + CUR_EMBA.QTD_VOL;
+							EMB_ANTER := UPPER(cur_emba.embalagem);
+						ELSE
+							IF (GR_VOL) > 1 THEN	
+								SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+								MAXITEM := NVL(MAXITEM,0)+1;
+								INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, SUM(QTD_VOL), EMB_TESTE, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND UPPER(EMBALAGEM) LIKE SUBSTR(EMB_TESTE,-LENGTH(EMB_TESTE),LENGTH(EMB_TESTE) -1) ||'%'; 
+								COMMIT;
+							ELSE
+								SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+								MAXITEM := NVL(MAXITEM,0)+1;
+								INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, SUM(QTD_VOL), EMB_ANTER, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND UPPER(EMBALAGEM) = EMB_ANTER; 
+								COMMIT;
+							end if;
+							GR_VOL := CUR_EMBA.QTD_VOL;
+							EMB_TESTE := cur_emba.emb_padrão;
+							EMB_ANTER := cur_emba.embalagem;	
+							IF NVL(cur_emba.emb_padrão,' ') = ' ' then
+								EMB_TESTE := UPPER(cur_emba.embalagem);
+								EMB_ANTER := UPPER(cur_emba.embalagem);	
+							END IF;
+						end if;
+						CTR_NCM := TRUE;
+					end loop;						
+					IF CTR_NCM = TRUE THEN
+						IF (GR_VOL) > 1 THEN	
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+							MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, SUM(QTD_VOL), EMB_TESTE, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND UPPER(EMBALAGEM) = EMB_TESTE; 
+							COMMIT;
+						ELSE
+							SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CONHECIMENT_ROD_DET WHERE DOC_SEQ = MAXDOC;
+							MAXITEM := NVL(MAXITEM,0)+1;
+							INSERT INTO CXRJ.DOC_CONHECIMENT_ROD_DET (DOC_SEQ, SEQ_ITEM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO, PESO_BRUTO) SELECT MAXDOC, MAXITEM, NULL, SUM(QTD_VOL), EMB_ANTER, SUM(PESO_LÍQUIDO), SUM(PESO_BRUTO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND UPPER(EMBALAGEM) = EMB_ANTER; 
+							COMMIT;
+						end if;
+					END IF;
+				end loop;
+			end loop;
+-- FATURA DE JUROS 
+    		elsIf in_doc = 'DOC_FATURA_JUROS' and in_tipo = 'EXP' then
+		        SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_FATURA_JUROS;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			SELECT EXP_CALC INTO VALOR_JUROS FROM EMB_LANÇ WHERE (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND EXP = -1) OR (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND EXP = 1);
+	 		INSERT INTO CXRJ.DOC_FATURA_JUROS (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, SACADO_CIA_COD, SACADO_NOME, SACADO_ENDEREÇO, SACADO_PAÍS, SACADO_CONTATO, TÍTULO, REF_CIEX, DATA_DOC, MOEDA, INTEREST, TRANSPORTADOR, DATE_SHIPMENT, DESCR_BL, COND_PAG, DESCRIÇÃO, DESCR_JUROS, PRINCIPAL, MENSAGEM, IDIOMA, ASSINATURA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.EXP_LOGOTIPO, EMB.EXP, EMB.EXP, EMB.EXP_ENDEREÇO, EMB.EXP_PAÍS, NULL, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, NULL, EMB.EXP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.MOEDA, VALOR_JUROS, EMB.TRANSPORTADOR, EMB.DATA_EMBARQUE, EMB.NUM_BL_DESCR, EMB.EXP_COND_PAG, NULL, NULL, ret_valor(in_Emb, in_tipo), ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+    		elsIf in_doc = 'DOC_FATURA_JUROS' and in_tipo = 'IMP' then
+		        SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_FATURA_JUROS;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			SELECT IMP_CALC INTO VALOR_JUROS FROM EMB_LANÇ WHERE (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND IMP = -1) OR (EMB_LANÇ.EMB_REF = in_emb AND LANÇ = 'JUROS' AND IMP = 1);
+	 		INSERT INTO CXRJ.DOC_FATURA_JUROS (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, SACADO_CIA_COD, SACADO_NOME, SACADO_ENDEREÇO, SACADO_PAÍS, SACADO_CONTATO, TÍTULO, REF_CIEX, DATA_DOC, MOEDA, INTEREST, TRANSPORTADOR, DATE_SHIPMENT, DESCR_BL, COND_PAG, DESCRIÇÃO, DESCR_JUROS, PRINCIPAL, MENSAGEM, IDIOMA, ASSINATURA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.IMP_LOGOTIPO, EMB.IMP, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, NULL, EMB.PAGADOR, EMB.PAG_ENDEREÇO, EMB.PAG_PAÍS, NULL, NULL, EMB.IMP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.MOEDA, VALOR_JUROS, EMB.TRANSPORTADOR, EMB.DATA_EMBARQUE, EMB.NUM_BL_DESCR, EMB.IMP_COND_PAG, NULL, NULL, ret_valor(in_Emb, in_tipo), ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, NULL, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			INSERT INTO CXRJ.EMB_DOC_REL (EMB_REF, DOC, EMB_REL) VALUES (in_emb, in_item, in_emb);
+			COMMIT;
+-- FECHAMENTO DE CAMBIO
+       		elsIf in_doc = 'DOC_FECHAMENTO_CÂMB' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_FECHAMENTO_CÂMB;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+	 		INSERT INTO CXRJ.DOC_FECHAMENTO_CÂMB (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, REF_CIEX, DATA_DOC, REF_RE, REF_CÂMBIO, BANCO_CIA_COD, BANCO_NOME, BANCO_ENDEREÇO, BANCO_PAÍS, BANCO_CONTATO, VENCIMENTO, COND_PAG, COMISSÃO, DATA_BL, MENSAGEM, SACADO_CIA_COD, SACADO_NOME, SACADO_CONTATO, SACADO_ENDEREÇO, SACADO_PAÍS, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.EXP_LOGOTIPO, EMB.EXP, EMB.EXP, EMB.EXP_ENDEREÇO, EMB.EXP_PAÍS, NULL, NULL, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, NULL, EMB.EXP_FAT, EMB.DATA_EMISSÃO_DOC, RET_RE(in_Emb), NULL, NULL, NULL, NULL, NULL, NULL, NULL, EMB.EXP_COND_PAG, NULL, EMB.DATA_EMBARQUE, ret_msg(in_Emb, in_doc, in_tipo), NULL, NULL, NULL, NULL, NULL, EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+			for cur_lanç in (SELECT SEQ, EXP_DESCR, EXP, EXP_CALC FROM EMB_TOTALIZA WHERE (EMB_REF = in_emb AND EXP = -1) OR (EMB_REF = in_emb AND EXP = 1) ORDER BY SEQ) loop
+				SELECT MAX(SEQ_LANC) INTO MAXLANC FROM CXRJ.DOC_FECHAMENTO_CÂMB_TOT WHERE DOC_SEQ = MAXDOC;
+	    			MAXLANC := NVL(MAXLANC,0)+1;
+		            	INSERT INTO CXRJ.DOC_FECHAMENTO_CÂMB_TOT (DOC_SEQ, SEQ_LANC, LANÇAMENTO, VALOR) SELECT MAXDOC, MAXLANC, cur_lanç.EXP_DESCR, cur_lanç.EXP_CALC FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+				COMMIT;
+			end loop;
+       		elsIf in_doc = 'DOC_FECHAMENTO_CÂMB' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_FECHAMENTO_CÂMB;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+	 		INSERT INTO CXRJ.DOC_FECHAMENTO_CÂMB (DOC, ORIGEM_CIA_COD, ORIGEM_LOGO_NOME, ORIGEM_NOME, ORIGEM_ENDEREÇO, ORIGEM_PAÍS, ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_NOME, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, REF_CIEX, DATA_DOC, REF_RE, REF_CÂMBIO, BANCO_CIA_COD, BANCO_NOME, BANCO_ENDEREÇO, BANCO_PAÍS, BANCO_CONTATO, VENCIMENTO, COND_PAG, COMISSÃO, DATA_BL, MENSAGEM, SACADO_CIA_COD, SACADO_NOME, SACADO_CONTATO, SACADO_ENDEREÇO, SACADO_PAÍS, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, EMB.IMP_LOGOTIPO, EMB.IMP, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, NULL, NULL, EMB.PAGADOR, EMB.PAG_ENDEREÇO, EMB.PAG_PAÍS, NULL, NULL, EMB.IMP_FAT, EMB.DATA_EMISSÃO_DOC, RET_RE(in_Emb), NULL, NULL, NULL, NULL, NULL, NULL, NULL, EMB.IMP_COND_PAG, NULL, EMB.DATA_EMBARQUE, ret_msg(in_Emb, in_doc, in_tipo), NULL, NULL, NULL, NULL, NULL, EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+			for cur_lanç in (SELECT SEQ, IMP_DESCR, IMP, IMP_CALC FROM EMB_TOTALIZA WHERE (EMB_REF = in_emb AND IMP = -1) OR (EMB_REF = in_emb AND IMP = 1) ORDER BY SEQ) loop
+				SELECT MAX(SEQ_LANC) INTO MAXLANC FROM CXRJ.DOC_FECHAMENTO_CÂMB_TOT WHERE DOC_SEQ = MAXDOC;
+	    			MAXLANC := NVL(MAXLANC,0)+1;
+		            	INSERT INTO CXRJ.DOC_FECHAMENTO_CÂMB_TOT (DOC_SEQ, SEQ_LANC, LANÇAMENTO, VALOR) SELECT MAXDOC, MAXLANC, cur_lanç.IMP_DESCR, cur_lanç.IMP_CALC FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+				COMMIT;
+			end loop;
+-- CÂMARA_COMÉRCIO
+       		elsIf in_doc = 'DOC_CÂMARA_COMÉRCIO' and in_tipo = 'EXP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_CÂMARA_COMÉRCIO;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO (DOC, COD_EXP, EXPORTADOR, EXP_ENDEREÇO, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_PAÍS, REF_CIEX, DATA_DOC, TRANSPORTADOR, CONSIGNATÁRIO, UNID_PESO, MOEDA, TOTAL_DOC, MENSAGEM, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.EXP, EMB.EXP_ENDEREÇO, EMB.EXP_PAÍS, NULL, EMB.IMP, EMB.IMP_PAÍS, EMB.EXP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.TRANSPORTADOR, EMB.CONSIGNATÁRIO, EMB.PESO_UNID, EMB.MOEDA, ret_valor(in_Emb, in_tipo), ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+					for cur_NCM in (SELECT NCM FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NCM) loop
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NCM, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM group by EMBALAGEM, NCM) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = cur_ordem.NCM group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 				
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, NULL, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 				
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+					end loop;
+				end loop;
+			end loop;
+       		elsIf in_doc = 'DOC_CÂMARA_COMÉRCIO' and in_tipo = 'IMP' then
+			SELECT MAX(DOC) INTO MAXDOC FROM CXRJ.DOC_CÂMARA_COMÉRCIO;
+	    		MAXDOC := NVL(MAXDOC,0)+1;
+			INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO (DOC, COD_EXP, EXPORTADOR, EXP_ENDEREÇO, EXP_PAÍS, COD_IMP, IMPORTADOR, IMP_PAÍS, REF_CIEX, DATA_DOC, TRANSPORTADOR, CONSIGNATÁRIO, UNID_PESO, MOEDA, TOTAL_DOC, MENSAGEM, IDIOMA, EMB_REF, EMB_DOC_SEQ) SELECT MAXDOC, NULL, EMB.IMP, EMB.IMP_ENDEREÇO, EMB.IMP_PAÍS, NULL, EMB.PAGADOR, EMB.PAG_PAÍS, EMB.IMP_FAT, EMB.DATA_EMISSÃO_DOC, EMB.TRANSPORTADOR, EMB.CONSIGNATÁRIO, EMB.PESO_UNID, EMB.MOEDA, ret_valor(in_Emb, in_tipo), ret_msg(in_Emb, in_doc, in_tipo), EMB.IDIOMA, EMB.REF, EMB_DOC.SEQ FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+			COMMIT;
+          		for cur in (SELECT FAMÍLIA_GENÉRICA FROM BL_CARGA WHERE EMB_REF = in_emb group by FAMÍLIA_GENÉRICA order by FAMÍLIA_GENÉRICA) loop
+				for cur_fam in (SELECT FAMÍLIA FROM EMB_FAMÍLIA_GENÉRICA WHERE EMB_REF = in_emb AND SEQ = CUR.FAMÍLIA_GENÉRICA) loop
+					SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+			    		MAXITEM := NVL(MAXITEM,0)+1;
+	       				INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, NULL, cur_fam.FAMÍLIA, NULL, NULL, NULL FROM EMB, EMB_DOC WHERE EMB_DOC.EMB_REF = in_emb AND EMB_DOC.SEQ = in_item AND EMB_DOC.EMB_REF = EMB.REF (+);
+					COMMIT;
+					for cur_NCM in (SELECT NCM FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA group by NCM) loop
+							CTR_NCM := False;
+							in_NCM := False;
+							for cur_ordem in (SELECT EMBALAGEM, NCM, SUM(QTD_VOL) QTD_VOL FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM group by EMBALAGEM, NCM) loop
+								GR_VEZES := 0;
+								EMB_TESTE := 'INICIO';
+								for cur_emba in (SELECT EMBALAGEM, SUM(QTD_VOL) QTD_VOL, SUM(PESO_LÍQUIDO) LIQUIDO FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = cur_ordem.NCM group by EMBALAGEM) loop
+									SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_emba.EMBALAGEM) || '%';								
+									if EMB_TESTE = 'INICIO' THEN
+										EMB_TESTE := EMB_PADRÃO;
+									end if;
+									if EMB_TESTE = EMB_PADRÃO THEN
+										GR_VEZES := GR_VEZES + 1;
+									else
+										CTR_NCM := TRUE;
+									end if;													
+								end loop;						
+								if GR_VEZES = 1 AND CTR_NCM = FALSE then
+									IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+							    			MAXITEM := NVL(MAXITEM,0)+1;
+										INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LEXTRAI(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+									ELSE
+										SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+						    				MAXITEM := NVL(MAXITEM,0)+1;
+										INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+									END IF;
+								elsIf GR_VEZES > 1 AND CTR_NCM = FALSE then
+									SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+							    		MAXITEM := NVL(MAXITEM,0)+1;
+									INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 
+									CTR_NCM := TRUE;
+								elsif GR_VEZES = 1 AND CTR_NCM = TRUE then
+									if in_NCM = false then
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 				
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, CUR_NCM.NCM, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+										in_NCM := True;
+									else
+										IF (CUR_ORDEM.QTD_VOL) > 1 THEN																
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+								    			MAXITEM := NVL(MAXITEM,0)+1;
+											SELECT COD INTO EMB_PADRÃO FROM EMBALAGEM WHERE UPPER(DESCR) LIKE '%' || UPPER(CUR_ORDEM.EMBALAGEM) || '%';								
+											INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, NULL, NULL, SUM(QTD_VOL), LExtrai(in_emb, emb_padrão,'+'), SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM; 				
+										ELSE
+											SELECT MAX(SEQ_ITEM) INTO MAXITEM FROM CXRJ.DOC_CÂMARA_COMÉRCIO_DET WHERE DOC_SEQ = MAXDOC;
+						    					MAXITEM := NVL(MAXITEM,0)+1;
+											INSERT INTO CXRJ.DOC_CÂMARA_COMÉRCIO_DET (DOC_SEQ, SEQ_ITEM, NCM, FAMÍLIA, VOLUME, EMBALAGEM, PESO_LÍQUIDO) SELECT MAXDOC, MAXITEM, NULL, NULL, SUM(QTD_VOL), CUR_ORDEM.EMBALAGEM, SUM(PESO_LÍQUIDO) FROM BL_CARGA WHERE EMB_REF = in_emb AND FAMÍLIA_GENÉRICA = CUR.FAMÍLIA_GENÉRICA AND NCM = CUR_NCM.NCM AND EMBALAGEM = CUR_ORDEM.EMBALAGEM; 
+										END IF;
+									end if;
+								else
+									CTR_NCM := FALSE;
+								end if;
+							end loop;
+					end loop;
+				end loop;
+			end loop;
+       		end if;
+   	end;
+
+--##############################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################
+-- ATUALIZAÇÃO DOS DOCUMENTOS ##################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################
+--##############################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################
+        
+	procedure latualizaembdoc (ref_origem in varchar2, seq_origem in number, ref_destino in varchar2, doc varchar2) is
+	seq_destino number;
+	doc_cur number;
+	doc_max number;
+	maxordem number;
+	DESTINO_COD varchar2(100);
+	G_NORMA varchar2(3000);
+	begin
+		SELECT MAX(SEQ) INTO seq_destino FROM CXRJ.EMB_DOC WHERE EMB_REF = ref_destino;
+		if doc = 'DOC_CARTA_I' then
+			for cur in (SELECT ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, ASSUNTO FROM DOC_CARTA_I WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+           			update CXRJ.DOC_CARTA_I set ORIGEM_CONTATO = cur.ORIGEM_CONTATO, ASSINATURA = cur.ASSINATURA, TÍTULO = cur.TÍTULO, ASSUNTO = cur.ASSUNTO where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+       			end loop;
+    		elsif doc = 'DOC_CARTA_P' then
+       			for cur in (SELECT ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, ASSUNTO FROM DOC_CARTA_P WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop 
+           			update CXRJ.DOC_CARTA_P set ORIGEM_CONTATO = cur.ORIGEM_CONTATO, ASSINATURA = cur.ASSINATURA, TÍTULO = cur.TÍTULO, ASSUNTO = cur.ASSUNTO where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+       			end loop;
+    		elsif doc = 'DOC_BORDERÔ_I' then
+       			for cur in (SELECT ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DESTINO_REF, COMISSÃO, INSTRUÇÕES, DOCUMENTO FROM DOC_BORDERÔ_I WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				SELECT DESTINO_CIA_COD INTO DESTINO_COD FROM DOC_BORDERÔ_I WHERE EMB_REF = ref_destino AND EMB_DOC_SEQ = seq_destino;
+				if length(DESTINO_COD) > 0 then
+					for cur_cia in (SELECT NOME, ENDEREÇO, BAIRRO, CIDADE, ESTADO, CEP, PAÍS FROM CIA WHERE CIA.COD = DESTINO_COD) loop
+	        	   			update CXRJ.DOC_BORDERÔ_I set ORIGEM_CONTATO = cur.ORIGEM_CONTATO, ASSINATURA = cur.ASSINATURA, TÍTULO = cur.TÍTULO, DESTINO_REF = cur.DESTINO_REF, DESTINO_NOME = cur_cia.NOME, DESTINO_ENDEREÇO = cur_cia.ENDEREÇO || ' - ' || cur_cia.BAIRRO ||  chr(13) || chr(10) || cur_cia.CIDADE || ' - ' || cur_cia.ESTADO || ' - ' || cur_cia.CEP ||  chr(13) || chr(10) || cur_cia.PAÍS, COMISSÃO = cur.COMISSÃO, INSTRUÇÕES = cur.INSTRUÇÕES, DOCUMENTO = cur.DOCUMENTO where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+					end loop;
+				else
+	           			update CXRJ.DOC_BORDERÔ_I set ORIGEM_CONTATO = cur.ORIGEM_CONTATO, ASSINATURA = cur.ASSINATURA, TÍTULO = cur.TÍTULO, DESTINO_REF = cur.DESTINO_REF, COMISSÃO = cur.COMISSÃO, INSTRUÇÕES = cur.INSTRUÇÕES, DOCUMENTO = cur.DOCUMENTO where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+				end if;
+			end loop;
+		elsif doc = 'DOC_BORDERÔ_P' then
+			for cur in (SELECT ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_ENDEREÇO, DESTINO_PAÍS, DESTINO_CONTATO, TÍTULO, DESTINO_REF, COMISSÃO, INSTRUÇÕES, DOCUMENTO FROM DOC_BORDERÔ_P WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				SELECT DESTINO_CIA_COD INTO DESTINO_COD FROM DOC_BORDERÔ_P WHERE EMB_REF = ref_destino AND EMB_DOC_SEQ = seq_destino;
+				if length(DESTINO_COD) > 0 then
+					for cur_cia in (SELECT NOME, ENDEREÇO, BAIRRO, CIDADE, ESTADO, CEP, PAÍS FROM CIA WHERE CIA.COD = DESTINO_COD) loop
+	        	   			update CXRJ.DOC_BORDERÔ_P set ORIGEM_CONTATO = cur.ORIGEM_CONTATO, ASSINATURA = cur.ASSINATURA, TÍTULO = cur.TÍTULO, DESTINO_REF = cur.DESTINO_REF, DESTINO_NOME = cur_cia.NOME, DESTINO_ENDEREÇO = cur_cia.ENDEREÇO || ' - ' || cur_cia.BAIRRO ||  chr(13) || chr(10) || cur_cia.CIDADE || ' - ' || cur_cia.ESTADO || ' - ' || cur_cia.CEP ||  chr(13) || chr(10) || cur_cia.PAÍS, COMISSÃO = cur.COMISSÃO, INSTRUÇÕES = cur.INSTRUÇÕES, DOCUMENTO = cur.DOCUMENTO where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+					end loop;
+				else
+	           			update CXRJ.DOC_BORDERÔ_P set ORIGEM_CONTATO = cur.ORIGEM_CONTATO, ASSINATURA = cur.ASSINATURA, TÍTULO = cur.TÍTULO, DESTINO_REF = cur.DESTINO_REF, COMISSÃO = cur.COMISSÃO, INSTRUÇÕES = cur.INSTRUÇÕES, DOCUMENTO = cur.DOCUMENTO where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+				end if;
+			end loop;
+		elsif doc = 'DOC_FATURA' then
+			for cur in (SELECT ORIGEM_CONTATO, SACADO_CIA_COD, SACADO_CONTATO, TÍTULO, ASSINATURA FROM DOC_FATURA WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_FATURA set ORIGEM_CONTATO = cur.ORIGEM_CONTATO, SACADO_CIA_COD = cur.SACADO_CIA_COD, SACADO_CONTATO = cur.SACADO_CONTATO, TÍTULO = cur.TÍTULO, ASSINATURA = cur.ASSINATURA where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_MERCOSUL' then
+			for cur in (SELECT DOC, COD_EXP, COD_IMP, COD_CONSIGN, OBS, DECLARAÇÃO, DECLARAÇÃO_DATA FROM DOC_MERCOSUL WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_MERCOSUL set COD_EXP = cur.COD_EXP, COD_IMP = cur.COD_IMP, COD_CONSIGN = cur.COD_CONSIGN, OBS = cur.OBS, DECLARAÇÃO = cur.DECLARAÇÃO where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+				doc_cur := cur.doc;
+			end loop;
+			select max(doc) into doc_max from DOC_MERCOSUL;
+			for norma in (SELECT SEQ_NORMA, NORMA FROM DOC_MERCOSUL_NORMA WHERE DOC_SEQ = doc_cur)  loop
+				SELECT MAX(SEQ_NORMA) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_NORMA WHERE DOC_SEQ = doc_max;
+				MAXORDEM := NVL(MAXORDEM,0)+1;
+				INSERT INTO CXRJ.DOC_MERCOSUL_NORMA (DOC_SEQ, SEQ_NORMA, NORMA) VALUES (DOC_MAX, MAXORDEM, NORMA.NORMA);	
+				COMMIT;
+			end loop;
+		elsif doc = 'DOC_MERCOSUL_CHILE' then
+			for cur in (SELECT DOC, COD_EXP, COD_IMP, COD_CONSIGN, OBS, DECLARAÇÃO, DECLARAÇÃO_DATA FROM DOC_MERCOSUL_CHILE WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_MERCOSUL_CHILE set COD_EXP = cur.COD_EXP, COD_IMP = cur.COD_IMP, COD_CONSIGN = cur.COD_CONSIGN, OBS = cur.OBS, DECLARAÇÃO = cur.DECLARAÇÃO where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+				doc_cur := cur.doc;
+			end loop;
+			select max(doc) into doc_max from DOC_MERCOSUL_CHILE;
+			for norma in (SELECT SEQ_NORMA, NORMA FROM DOC_MERCOSUL_CHILE_NORMA WHERE DOC_SEQ = doc_cur)  loop
+				SELECT MAX(SEQ_NORMA) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_CHILE_NORMA WHERE DOC_SEQ = doc_max;
+				MAXORDEM := NVL(MAXORDEM,0)+1;
+				INSERT INTO CXRJ.DOC_MERCOSUL_CHILE_NORMA (DOC_SEQ, SEQ_NORMA, NORMA) VALUES (DOC_MAX, MAXORDEM, NORMA.NORMA);	
+				COMMIT;
+			end loop;
+		elsif doc = 'DOC_MERCOSUL_BOLIV' then
+			for cur in (SELECT DOC, COD_EXP, COD_IMP, COD_CONSIGN, OBS, DECLARAÇÃO, DECLARAÇÃO_DATA FROM DOC_MERCOSUL_BOLIV WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_MERCOSUL_BOLIV set COD_EXP = cur.COD_EXP, COD_IMP = cur.COD_IMP, COD_CONSIGN = cur.COD_CONSIGN, OBS = cur.OBS, DECLARAÇÃO = cur.DECLARAÇÃO where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+				doc_cur := cur.doc;
+			end loop;
+			select max(doc) into doc_max from DOC_MERCOSUL_BOLIV;
+			for norma in (SELECT SEQ_NORMA, NORMA FROM DOC_MERCOSUL_BOLIV_NORMA WHERE DOC_SEQ = doc_cur)  loop
+				SELECT MAX(SEQ_NORMA) INTO MAXORDEM FROM CXRJ.DOC_MERCOSUL_BOLIV_NORMA WHERE DOC_SEQ = doc_max;
+				MAXORDEM := NVL(MAXORDEM,0)+1;
+				INSERT INTO CXRJ.DOC_MERCOSUL_BOLIV_NORMA (DOC_SEQ, SEQ_NORMA, NORMA) VALUES (DOC_MAX, MAXORDEM, NORMA.NORMA);	
+				COMMIT;
+			end loop;
+		elsif doc = 'DOC_SAQUE_2V' then
+			for cur in (SELECT ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, ORIGEM_ESTADO, SACADO_CIA_COD, SACADO_NOME, SUPERVISOR, TÍTULO, VALOR_EXT, MENSAGEM_COMP FROM DOC_SAQUE_2V WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_SAQUE_2V set ASSISTENTE = cur.ASSISTENTE, BENEF_CIA_COD = cur.BENEF_CIA_COD, BENEF_NOME = cur.BENEF_NOME, ORIGEM_ESTADO = cur.ORIGEM_ESTADO, SACADO_CIA_COD = cur.SACADO_CIA_COD, SACADO_NOME = cur.SACADO_NOME, SUPERVISOR = cur.SUPERVISOR, TÍTULO = cur.TÍTULO, MENSAGEM_COMP = cur.MENSAGEM_COMP where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_SAQUE_3V' then
+			for cur in (SELECT ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, ORIGEM_ESTADO, SACADO_CIA_COD, SACADO_NOME, SUPERVISOR, TÍTULO, VALOR_EXT, MENSAGEM_COMP FROM DOC_SAQUE_3V WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_SAQUE_3V set ASSISTENTE = cur.ASSISTENTE, BENEF_CIA_COD = cur.BENEF_CIA_COD, BENEF_NOME = cur.BENEF_NOME, ORIGEM_ESTADO = cur.ORIGEM_ESTADO, SACADO_CIA_COD = cur.SACADO_CIA_COD, SACADO_NOME = cur.SACADO_NOME, SUPERVISOR = cur.SUPERVISOR, TÍTULO = cur.TÍTULO, MENSAGEM_COMP = cur.MENSAGEM_COMP where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_SAQUE_JUROS_2V' then
+			for cur in (SELECT ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, ORIGEM_ESTADO, SACADO_CIA_COD, SACADO_NOME, SUPERVISOR, TÍTULO, VALOR_EXT, MENSAGEM_COMP FROM DOC_SAQUE_JUROS_2V WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_SAQUE_JUROS_2V set ASSISTENTE = cur.ASSISTENTE, BENEF_CIA_COD = cur.BENEF_CIA_COD, BENEF_NOME = cur.BENEF_NOME, ORIGEM_ESTADO = cur.ORIGEM_ESTADO, SACADO_CIA_COD = cur.SACADO_CIA_COD, SACADO_NOME = cur.SACADO_NOME, SUPERVISOR = cur.SUPERVISOR, TÍTULO = cur.TÍTULO, VALOR_EXT = cur.VALOR_EXT, MENSAGEM_COMP = cur.MENSAGEM_COMP where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_SAQUE_JUROS_3V' then
+			for cur in (SELECT ASSISTENTE, BENEF_CIA_COD, BENEF_NOME, ORIGEM_ESTADO, SACADO_CIA_COD, SACADO_NOME, SUPERVISOR, TÍTULO, VALOR_EXT, MENSAGEM_COMP FROM DOC_SAQUE_JUROS_3V WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_SAQUE_JUROS_3V set ASSISTENTE = cur.ASSISTENTE, BENEF_CIA_COD = cur.BENEF_CIA_COD, BENEF_NOME = cur.BENEF_NOME, ORIGEM_ESTADO = cur.ORIGEM_ESTADO, SACADO_CIA_COD = cur.SACADO_CIA_COD, SACADO_NOME = cur.SACADO_NOME, SUPERVISOR = cur.SUPERVISOR, TÍTULO = cur.TÍTULO, VALOR_EXT = cur.VALOR_EXT, MENSAGEM_COMP = cur.MENSAGEM_COMP where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_PLIST_WEIG_CERT' then
+			for cur in (SELECT ORIGEM_CIA_COD, ORIGEM_CONTATO, SACADO_CIA_COD, SACADO_CONTATO, TÍTULO, ASSINATURA, DESCR_MERC FROM DOC_PLIST_WEIG_CERT WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_PLIST_WEIG_CERT set ORIGEM_CIA_COD = cur.ORIGEM_CIA_COD, ORIGEM_CONTATO = cur.ORIGEM_CONTATO, SACADO_CIA_COD = cur.SACADO_CIA_COD, SACADO_CONTATO = cur.SACADO_CONTATO, TÍTULO = cur.TÍTULO, ASSINATURA = cur.ASSINATURA, DESCR_MERC = cur.DESCR_MERC where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_ALADI'then
+			for cur in (SELECT DOC, DECLARAÇÃO, OBS FROM DOC_ALADI WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				select NORMA into G_NORMA from DOC_ALADI_NORMA WHERE DOC_SEQ = cur.doc;
+				select DOC into doc_max from DOC_ALADI WHERE EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+				update CXRJ.DOC_ALADI set DECLARAÇÃO = cur.DECLARAÇÃO, OBS = cur.OBS where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+				update CXRJ.DOC_ALADI_NORMA set NORMA = G_NORMA Where DOC_SEQ = doc_max;
+			end loop;
+		elsif doc = 'DOC_FIRJAN' then
+			for cur in (SELECT COD_EXP, COD_IMP, COD_CONSIGN, MENSAGEM FROM DOC_FIRJAN WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_FIRJAN set COD_EXP = cur.COD_EXP, COD_IMP = cur.COD_IMP, COD_CONSIGN = cur.COD_CONSIGN, MENSAGEM = cur.MENSAGEM where EMB_DOC_SEQ = seq_destino AND EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_CONHECIMENT_ROD' then
+			for cur in (SELECT TÍTULO, ORIGEM_CONTATO, TRANSPORTADOR_CIA_COD, TRANSPORTADOR_ENDEREÇO, TRANSPORTADOR_PAÍS, TRANSPORTADOR_CONTATO, REMETENTE_CIA_COD, REMETENTE, REMETENTE_ENDEREÇO, REMETENTE_PAÍS, DESTINATÁRIO_CIA_COD, DESTINATÁRIO_ENDEREÇO, DESTINATÁRIO_PAÍS, CONSIGNATÁRIO_CIA_COD, MARCAÇÃO, REF_RE, ASSINATURA, DESTINO_CIA_COD, DESTINO_CONTATO FROM DOC_CONHECIMENT_ROD WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_CONHECIMENT_ROD set TÍTULO = cur.TÍTULO, ORIGEM_CONTATO = cur.ORIGEM_CONTATO,TRANSPORTADOR_CIA_COD= cur.TRANSPORTADOR_CIA_COD, TRANSPORTADOR_ENDEREÇO = cur.TRANSPORTADOR_ENDEREÇO, TRANSPORTADOR_PAÍS = cur.TRANSPORTADOR_PAÍS, TRANSPORTADOR_CONTATO = cur.TRANSPORTADOR_CONTATO, REMETENTE_CIA_COD = cur.REMETENTE_CIA_COD, REMETENTE = cur.REMETENTE, REMETENTE_ENDEREÇO = cur.REMETENTE_ENDEREÇO, REMETENTE_PAÍS = cur.REMETENTE_PAÍS, DESTINATÁRIO_CIA_COD = cur.DESTINATÁRIO_CIA_COD, DESTINATÁRIO_ENDEREÇO = cur.DESTINATÁRIO_ENDEREÇO, DESTINATÁRIO_PAÍS = cur.DESTINATÁRIO_PAÍS, CONSIGNATÁRIO_CIA_COD = cur.CONSIGNATÁRIO_CIA_COD, MARCAÇÃO = cur.MARCAÇÃO, REF_RE = cur.REF_RE, ASSINATURA = cur.ASSINATURA, DESTINO_CIA_COD = cur.DESTINO_CIA_COD, DESTINO_CONTATO = cur.DESTINO_CONTATO where EMB_DOC_SEQ = seq_destino and EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_FATURA_JUROS' then
+			for cur in (SELECT ORIGEM_CONTATO, TÍTULO, DATE_SHIPMENT, DESCRIÇÃO, DESCR_JUROS, ASSINATURA FROM DOC_FATURA_JUROS WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_FATURA_JUROS set ORIGEM_CONTATO = cur.ORIGEM_CONTATO, TÍTULO = cur.TÍTULO, DATE_SHIPMENT = cur.DATE_SHIPMENT, DESCRIÇÃO = cur.DESCRIÇÃO, DESCR_JUROS = cur.DESCR_JUROS, ASSINATURA = cur.ASSINATURA where EMB_DOC_SEQ = seq_destino and EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_FECHAMENTO_CÂMB' then
+			for cur in (SELECT ORIGEM_CONTATO, ASSINATURA, DESTINO_CIA_COD, DESTINO_CONTATO, TÍTULO, REF_RE, REF_CÂMBIO, BANCO_CIA_COD, BANCO_NOME, BANCO_ENDEREÇO, BANCO_PAÍS, BANCO_CONTATO, VENCIMENTO, COMISSÃO, DATA_BL, MENSAGEM, SACADO_CIA_COD, SACADO_NOME, SACADO_CONTATO, SACADO_ENDEREÇO, SACADO_PAÍS FROM DOC_FECHAMENTO_CÂMB WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_FECHAMENTO_CÂMB set ORIGEM_CONTATO = cur.ORIGEM_CONTATO, ASSINATURA = cur.ASSINATURA, DESTINO_CIA_COD = cur.DESTINO_CIA_COD, DESTINO_CONTATO = cur.DESTINO_CONTATO, TÍTULO = cur.TÍTULO, REF_RE = cur.REF_RE, REF_CÂMBIO = cur.REF_CÂMBIO, BANCO_CIA_COD = cur.BANCO_CIA_COD, BANCO_NOME = cur.BANCO_NOME, BANCO_ENDEREÇO = cur.BANCO_ENDEREÇO, BANCO_PAÍS = cur.BANCO_PAÍS, BANCO_CONTATO = cur.BANCO_CONTATO, VENCIMENTO = cur.VENCIMENTO, COMISSÃO = cur.COMISSÃO, DATA_BL = cur.DATA_BL, MENSAGEM = cur.MENSAGEM, SACADO_CIA_COD = cur.SACADO_CIA_COD, SACADO_NOME = cur.SACADO_NOME, SACADO_CONTATO = cur.SACADO_CONTATO, SACADO_ENDEREÇO = cur.SACADO_ENDEREÇO, SACADO_PAÍS = cur.SACADO_PAÍS where EMB_DOC_SEQ = seq_destino and EMB_REF = ref_destino;
+			end loop;
+		elsif doc = 'DOC_CÂMARA_COMÉRCIO' then
+			for cur in (SELECT COD_EXP, COD_IMP, TOTAL_DOC, MENSAGEM FROM DOC_CÂMARA_COMÉRCIO WHERE EMB_DOC_SEQ = seq_origem AND EMB_REF = ref_origem) loop
+				update CXRJ.DOC_CÂMARA_COMÉRCIO set COD_EXP = cur.COD_EXP, COD_IMP = cur.COD_IMP, TOTAL_DOC = cur.TOTAL_DOC, MENSAGEM = cur.MENSAGEM where EMB_DOC_SEQ = seq_destino and EMB_REF = ref_destino;
+			end loop;
+		end if;
+	end latualizaembdoc;
+
+
+--#########################################################################################################################################
+-- PROCEDIMENTO CRIADO PARA ATUALIZAR O VALOR DOS DOCUMENTOS SEMPRE QUE É ANEXADO ALGUM OUTRO EMBARQUE ####################################	
+--#########################################################################################################################################
+
+	procedure RET_VALOR_EMB_DOC_REL ( EMB_REF_ORIG in varchar2, EMB_SEQ_ORIG in number, MOEDA_ORIG iN varchar2 := NULL) is
+	TIPO_DOC varchar2(25);
+	VAL_TOTAL NUMBER;
+	VAL NUMBER;
+	JUROS_TOTAL number;
+	TIPO_VAL varchar2(5);
+	cursor CURSORR is select EMB_DOC_REL.EMB_REL from CXRJ.EMB_DOC_REL, CXRJ.EMB_TOTALIZA where EMB_DOC_REL.EMB_REF = EMB_REF_ORIG and EMB_DOC_REL.DOC = EMB_SEQ_ORIG and (EMB_DOC_REL.EMB_REL = EMB_TOTALIZA.EMB_REF and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL');
+	begin
+		VAL_TOTAL:=0;
+		JUROS_TOTAL:=0;
+
+		-- GUARDA NAS VARIÁVEIS QUAL É O TIPO DO DOCUMENTO, E O TIPO DO VALOR(IMP OU EXP) 
+
+		select EMB_DOC.DOC,DECODE(EMB_DOC.IMP, -1,'IMP',0,'EXP')   into TIPO_DOC, TIPO_VAL  from CXRJ.EMB_DOC where EMB_DOC.EMB_REF = EMB_REF_ORIG and EMB_DOC.SEQ = EMB_SEQ_ORIG;
+		if TIPO_DOC = 'DOC_BORDERÔ_I' THEN
+			-- LOOP PARA VERIFICAR QUAIS OS EMBARQUES (DOCUEMENTOS) ANEXADOS AO DOCUMENTO ORIGINAL
+			for cur in CURSORR loop
+				-- PEGA O VALOR DOS DOCUMENTOS E SOMA COM O DOCUMENTO ORIGINAL
+
+				if TIPO_VAL = 'IMP' then
+					select nvl(EMB_TOTALIZA.IMP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+				elsif TIPO_VAL = 'EXP' then
+					select nvl(EMB_TOTALIZA.EXP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+				end if;
+				VAL_TOTAL := VAL + VAL_TOTAL;
+			end loop;
+			-- INSERE O VALOR TOTAL DO DOCUMENTO COM OS EMBARQUES ANEXADOS
+			UPDATE CXRJ.DOC_BORDERÔ_I SET DOC_BORDERÔ_I.VALOR = VAL_TOTAL WHERE DOC_BORDERÔ_I.EMB_REF = EMB_REF_ORIG and DOC_BORDERÔ_I.EMB_DOC_SEQ = EMB_SEQ_ORIG;
+		ELSIF TIPO_DOC = 'DOC_BORDERÔ_P' THEN
+			for cur in CURSORR loop
+				if TIPO_VAL = 'IMP' then
+					select nvl(EMB_TOTALIZA.IMP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+				elsif TIPO_VAL = 'EXP' then
+					select nvl(EMB_TOTALIZA.EXP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+				end if;
+				VAL_TOTAL := VAL + VAL_TOTAL;
+			end loop;
+			UPDATE CXRJ.DOC_BORDERÔ_P SET DOC_BORDERÔ_P.VALOR = VAL_TOTAL WHERE DOC_BORDERÔ_P.EMB_REF = EMB_REF_ORIG and DOC_BORDERÔ_P.EMB_DOC_SEQ = EMB_SEQ_ORIG;			
+		ELSIF TIPO_DOC = 'DOC_SAQUE_2V' THEN
+			for cur in CURSORR loop
+				if TIPO_VAL = 'IMP' then
+					select nvl(EMB_TOTALIZA.IMP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+				elsif TIPO_VAL = 'EXP' then
+					select nvl(EMB_TOTALIZA.EXP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+				end if;
+				VAL_TOTAL := VAL + VAL_TOTAL;
+			end loop;
+			UPDATE CXRJ.DOC_SAQUE_2V SET DOC_SAQUE_2V.SAQ_VALOR = VAL_TOTAL WHERE DOC_SAQUE_2V.EMB_REF = EMB_REF_ORIG and DOC_SAQUE_2V.EMB_DOC_SEQ = EMB_SEQ_ORIG;			
+		ELSIF TIPO_DOC = 'DOC_SAQUE_3V' THEN
+			for cur in CURSORR loop
+				if TIPO_VAL = 'IMP' then
+					select nvl(EMB_TOTALIZA.IMP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+				elsif TIPO_VAL = 'EXP' then
+					select nvl(EMB_TOTALIZA.EXP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+				end if;
+				VAL_TOTAL := VAL + VAL_TOTAL;
+			end loop;
+			UPDATE CXRJ.DOC_SAQUE_3V SET DOC_SAQUE_3V.SAQ_VALOR = VAL_TOTAL WHERE DOC_SAQUE_3V.EMB_REF = EMB_REF_ORIG and DOC_SAQUE_3V.EMB_DOC_SEQ = EMB_SEQ_ORIG;			
+		ELSIF TIPO_DOC = 'DOC_SAQUE_JUROS_2V' THEN
+			if TIPO_VAL = 'IMP' then
+				select  nvl(SUM(EMB_LANÇ.IMP_CALC),0) into JUROS_TOTAL from CXRJ.EMB_DOC_REL, CXRJ.EMB_LANÇ where EMB_DOC_REL.EMB_REF = EMB_REF_ORIG and EMB_DOC_REL.DOC = EMB_SEQ_ORIG and (EMB_DOC_REL.EMB_REL = EMB_LANÇ.EMB_REF and EMB_LANÇ.LANÇ = 'JUROS' and EMB_LANÇ.IMP = -1);
+			elsif TIPO_VAL = 'EXP' then
+				select  nvl(SUM(EMB_LANÇ.EXP_CALC),0) into JUROS_TOTAL from CXRJ.EMB_DOC_REL, CXRJ.EMB_LANÇ where EMB_DOC_REL.EMB_REF = EMB_REF_ORIG and EMB_DOC_REL.DOC = EMB_SEQ_ORIG and (EMB_DOC_REL.EMB_REL = EMB_LANÇ.EMB_REF and EMB_LANÇ.LANÇ = 'JUROS' and EMB_LANÇ.EXP = -1);
+                        end if;
+			UPDATE CXRJ.DOC_SAQUE_JUROS_2V SET DOC_SAQUE_JUROS_2V.SAQ_VALOR = JUROS_TOTAL WHERE DOC_SAQUE_JUROS_2V.EMB_REF = EMB_REF_ORIG and DOC_SAQUE_JUROS_2V.EMB_DOC_SEQ = EMB_SEQ_ORIG;			
+		ELSIF TIPO_DOC = 'DOC_SAQUE_JUROS_3V' THEN
+			if TIPO_VAL = 'IMP' then
+				select  nvl(SUM(EMB_LANÇ.IMP_CALC),0) into JUROS_TOTAL from CXRJ.EMB_DOC_REL, CXRJ.EMB_LANÇ where EMB_DOC_REL.EMB_REF = EMB_REF_ORIG and EMB_DOC_REL.DOC = EMB_SEQ_ORIG and (EMB_DOC_REL.EMB_REL = EMB_LANÇ.EMB_REF and EMB_LANÇ.LANÇ = 'JUROS' and EMB_LANÇ.IMP = -1);
+			elsif TIPO_VAL = 'EXP' then
+				select  nvl(SUM(EMB_LANÇ.EXP_CALC),0) into JUROS_TOTAL from CXRJ.EMB_DOC_REL, CXRJ.EMB_LANÇ where EMB_DOC_REL.EMB_REF = EMB_REF_ORIG and EMB_DOC_REL.DOC = EMB_SEQ_ORIG and (EMB_DOC_REL.EMB_REL = EMB_LANÇ.EMB_REF and EMB_LANÇ.LANÇ = 'JUROS' and EMB_LANÇ.EXP = -1);
+			end if;
+			UPDATE CXRJ.DOC_SAQUE_JUROS_3V SET DOC_SAQUE_JUROS_3V.SAQ_VALOR = JUROS_TOTAL WHERE DOC_SAQUE_JUROS_3V.EMB_REF = EMB_REF_ORIG and DOC_SAQUE_JUROS_3V.EMB_DOC_SEQ = EMB_SEQ_ORIG;			
+		ELSIF TIPO_DOC = 'DOC_FATURA_JUROS' THEN
+			for cur in CURSORR loop
+			if TIPO_VAL = 'IMP' then
+				select nvl(EMB_TOTALIZA.IMP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+			elsif TIPO_VAL = 'EXP' then
+				select nvl(EMB_TOTALIZA.EXP_CALC,0) into VAL from CXRJ.EMB_TOTALIZA where EMB_TOTALIZA.EMB_REF = cur.EMB_REL and EMB_TOTALIZA.LANÇ = 'TOTAL GERAL';		
+			end if;
+				VAL_TOTAL := VAL + VAL_TOTAL;
+			end loop;
+			if TIPO_VAL = 'IMP' then
+				select  nvl(SUM(EMB_LANÇ.IMP_CALC),0) into JUROS_TOTAL from CXRJ.EMB_DOC_REL, CXRJ.EMB_LANÇ where EMB_DOC_REL.EMB_REF = EMB_REF_ORIG and EMB_DOC_REL.DOC = EMB_SEQ_ORIG and (EMB_DOC_REL.EMB_REL = EMB_LANÇ.EMB_REF and EMB_LANÇ.LANÇ = 'JUROS' and EMB_LANÇ.IMP = -1);	
+			elsif TIPO_VAL = 'EXP' then
+				select  nvl(SUM(EMB_LANÇ.EXP_CALC),0) into JUROS_TOTAL from CXRJ.EMB_DOC_REL, CXRJ.EMB_LANÇ where EMB_DOC_REL.EMB_REF = EMB_REF_ORIG and EMB_DOC_REL.DOC = EMB_SEQ_ORIG and (EMB_DOC_REL.EMB_REL = EMB_LANÇ.EMB_REF and EMB_LANÇ.LANÇ = 'JUROS' and EMB_LANÇ.EXP = -1);
+			end if;				
+			UPDATE CXRJ.DOC_FATURA_JUROS SET DOC_FATURA_JUROS.INTEREST = JUROS_TOTAL, DOC_FATURA_JUROS.PRINCIPAL = VAL_TOTAL WHERE DOC_FATURA_JUROS.EMB_REF = EMB_REF_ORIG and DOC_FATURA_JUROS.EMB_DOC_SEQ = EMB_SEQ_ORIG;			
+		end if;
+		COMMIT;
+	end RET_VALOR_EMB_DOC_REL;
+
+
+end cx_doc;
+
+/

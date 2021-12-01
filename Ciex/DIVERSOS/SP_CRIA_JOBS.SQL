@@ -1,0 +1,2 @@
+EXEC DBMS_CX.PROG_GERA_PACOTES ('GERA_PACOTES_SP','18:00:00','D:\CXSP_T', 'PRISMA','CXSP.IMSP.COM.BR','cxrj@xxxxxxxxx.com.br;marcio@xxxxxxxxx.com.br;luciano.lisboa@xxxxxxxxx.com.br', '11.0.0.61');
+EXEC DBMS_CX.PROG_RECEBE_PACOTES('RECEBE_PACOTES_RJ', '2','CXRJ', 'D:\CXSP_T', 'PRISMA', 'CXSP.IMSP.COM.BR', 'marcio@xxxxxxxxx.com.br;luciano.lisboa@xxxxxxxxx.com.br', '11.0.0.61', 'EXDOMSP/ADMIN\CXSP', 'PRISMA', '11.0.0.61');

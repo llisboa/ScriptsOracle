@@ -1,0 +1,14 @@
+SHUTDOWN ABORT;
+STARTUP NOMOUNT;
+HOST 'DEL C:\oracle\product\10.2.0\oradata\SBDB\*.* /Q';
+RESTORE CONTROLFILE FROM AUTOBACKUP;
+ALTER DATABASE MOUNT;
+CONFIGURE RETENTION POLICY TO RECOVERY WINDOW OF 30 DAYS;
+CONFIGURE CONTROLFILE AUTOBACKUP ON;
+configure device type disk parallelism 2;
+configure default device type to disk;
+configure channel 1 device type disk format 'C:\backup_oracle\rman_disk\%u';
+configure channel 2 device type disk format 'D:\backup_oracle\rman_disk\%u';
+restore database;
+recover database;
+alter database open resetlogs;

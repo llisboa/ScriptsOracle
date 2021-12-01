@@ -1,0 +1,35 @@
+CREATE OR REPLACE TRIGGER BEF_COMUNICADO_RESTR BEFORE
+   UPDATE OR
+   INSERT ON COMUNICADO FOR EACH ROW BEGIN IF :NEW.EDICAO_INICIO IS NULL THEN :NEW.STATUS := '';
+ELSE
+  IF :NEW.ENVIO_MOMENTO IS NULL THEN
+    :NEW.STATUS         := '1-Edição';
+  ELSE
+    IF :NEW.ENVIO_INICIO   IS NULL THEN
+      IF :NEW.ENVIO_MOMENTO < SYSDATE THEN
+        :NEW.STATUS        := '2-Aguardo';
+      ELSE
+        :NEW.STATUS := '3-Atenção';
+      END IF;
+    ELSE
+      IF :NEW.ENVIO_PREPARO IS NULL THEN
+        :NEW.STATUS         := '4-Preparo';
+      ELSE
+        IF :NEW.ENVIO_FIM IS NULL THEN
+          :NEW.STATUS     := '5-Enviando';
+        ELSE
+          IF :NEW.RESULT_INICIO IS NULL THEN
+            :NEW.STATUS         := '6-Enviado';
+          ELSE
+            IF :NEW.RESULT_FIM IS NULL THEN
+              :NEW.STATUS      := '7-Tratando Retorno';
+            ELSE
+              :NEW.STATUS := '8-Estatística';
+            END IF;
+          END IF;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+END IF;
+END;

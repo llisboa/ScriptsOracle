@@ -1,0 +1,1 @@
+movepormes -origem C:\oracle\flash_recovery_area\SBDB\BACKUP_ORACLE\RMAN_DISK\1 -destino D:\SBD_BKP_DEPOIS_2016 -qtdlocal 12

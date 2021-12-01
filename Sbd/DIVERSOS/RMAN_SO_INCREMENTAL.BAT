@@ -1,0 +1,1 @@
+CALL C:\oracle\flash_recovery_area\SBDB\BACKUP_ORACLE\RMAN_SO.BAT RMAN_INCREMENTAL.SQL

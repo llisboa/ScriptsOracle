@@ -1,0 +1,1 @@
+REM labscript -arq C:\COPIA_BASE_133_PARA_134.LAB -log C:\COPIA_BASE_133_PARA_134.log -de lista@xxxxxxx.org.br -para web@xxxxxxx.com.br -assunto "SBDB - COPIA_BASE_133_PARA_134 BANCO" -servidor "smtpi" -semconfirm

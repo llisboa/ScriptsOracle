@@ -1,0 +1,1 @@
+labscript -arq C:\oracle\flash_recovery_area\SBDB\BACKUP_ORACLE\TRANSFUSAO_SBDB_134_PARA_133.LAB -log C:\TRANSFUSAO_SBDB_134_PARA_133.log -de lista@xxxxxxx.org.br -para suporte@xxxxxxx.com.br -assunto "SBD - TRANSFUSAO - SBDB - COPIA DE 134 PARA 133 BANCO" -servidor "smtpi" -semconfirm

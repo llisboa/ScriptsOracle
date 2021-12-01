@@ -1,0 +1,99 @@
+CREATE OR REPLACE FUNCTION LSQLTOHTML
+    (
+      SQLTEXT IN VARCHAR2,
+      QTDCOLS NUMBER,
+      NENHUM VARCHAR2 DEFAULT 'NENHUMA LINHA')
+    RETURN VARCHAR2
+  AS
+    TEXTO CLOB;
+  TYPE CONSULTA_REF
+IS
+  REF
+  CURSOR;
+    CONSULTA CONSULTA_REF;
+    C01 VARCHAR2(400);
+    C02 VARCHAR2(400);
+    C03 VARCHAR2(400);
+    C04 VARCHAR2(400);
+    C05 VARCHAR2(400);
+    C06 VARCHAR2(400);
+    C07 VARCHAR2(400);
+    C08 VARCHAR2(400);
+    C09 VARCHAR2(400);
+    C10 VARCHAR2(400);
+    QTDLIN NUMBER;
+  BEGIN
+    IF QTDCOLS > 10 THEN
+       RAISE_APPLICATION_ERROR(-20000, 'Num max de colunas permitido: 10');
+    END IF;
+    TEXTO := '';
+    QTDLIN := 1;
+    OPEN CONSULTA FOR SQLTEXT;
+    LOOP
+      CASE QTDCOLS
+      WHEN 1 THEN
+        FETCH CONSULTA INTO C01;
+    WHEN 2 THEN
+      FETCH CONSULTA INTO C01, C02;
+    WHEN 3 THEN
+      FETCH CONSULTA INTO C01, C02, C03;
+    WHEN 4 THEN
+      FETCH CONSULTA INTO C01, C02, C03, C04;
+    WHEN 5 THEN
+      FETCH CONSULTA INTO C01, C02, C03, C04, C05;
+    WHEN 6 THEN
+      FETCH CONSULTA INTO C01, C02, C03, C04, C05, C06;
+    WHEN 7 THEN
+      FETCH CONSULTA INTO C01, C02, C03, C04, C05, C06, C07;
+    WHEN 8 THEN
+      FETCH CONSULTA INTO C01, C02, C03, C04, C05, C06, C07, C08;
+    WHEN 9 THEN
+      FETCH CONSULTA INTO C01, C02, C03, C04, C05, C06, C07, C08, C09;
+    WHEN 10 THEN
+      FETCH CONSULTA INTO C01, C02, C03, C04, C05, C06, C07, C08, C09, C10;
+    END CASE;
+      EXIT WHEN CONSULTA%NOTFOUND;
+    TEXTO := TEXTO || '<tr style=';
+    IF MOD(QTDLIN,2)=1 THEN
+       TEXTO := TEXTO || 'background-color:#f8f8f8';
+    ELSE
+       TEXTO := TEXTO || 'background-color:#e8e8e8';
+    END IF;
+    TEXTO   := TEXTO || '>';
+    FOR IND IN 1..qtdcols
+    LOOP
+      TEXTO := TEXTO || '<td style=padding:4px>';
+      CASE IND
+      WHEN 1 THEN
+        TEXTO := TEXTO || C01;
+      WHEN 2 THEN
+        TEXTO := TEXTO || C02;
+      WHEN 3 THEN
+        TEXTO := TEXTO || C03;
+      WHEN 4 THEN
+        TEXTO := TEXTO || C04;
+      WHEN 5 THEN
+        TEXTO := TEXTO || C05;
+      WHEN 6 THEN
+        TEXTO := TEXTO || C06;
+      WHEN 7 THEN
+        TEXTO := TEXTO || C07;
+      WHEN 8 THEN
+        TEXTO := TEXTO || C08;
+      WHEN 9 THEN
+        TEXTO := TEXTO || C09;
+      WHEN 10 THEN
+        TEXTO := TEXTO || C10;
+      END CASE;
+      TEXTO := TEXTO || '</td>';
+    END LOOP;
+    TEXTO := TEXTO || '</tr>';
+    QTDLIN := QTDLIN + 1;
+  END LOOP;
+  IF LENGTH(TEXTO)<>0 THEN
+ TEXTO := '<table>' || TEXTO || '</table>';
+  ELSE
+ TEXTO := '<table><tr><td>' || NENHUM || '</td></tr></table>';
+  END IF;
+  RETURN TEXTO;
+END LSQLTOHTML;

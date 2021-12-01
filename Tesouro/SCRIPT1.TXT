@@ -1,0 +1,84 @@
+
+ESQUEMA: TSRJ
+ARQUIVO: [esquema].SQL
+-------------------------------------------------------------------------------------
+-- CRIAÇÃO DE SCRIPT PARA GERAR ESTRUTURA BÁSICA [esquema]
+-------------------------------------------------------------------------------------
+ALTER TABLESPACE T_[esquema]_DAT OFFLINE;
+DROP TABLESPACE T_[esquema]_DAT INCLUDING CONTENTS;
+
+CREATE TABLESPACE T_[esquema]_DAT DATAFILE 'D:\ORACLE\ORADATA\[esquema]\TESOURO.DBF' SIZE 100M REUSE
+AUTOEXTEND ON NEXT 50M MAXSIZE UNLIMITED EXTENT MANAGEMENT LOCAL;
+
+<<cria estrutura de tabelas>>
+<<cria relacionamentos>>
+<<cria triggers>>
+<<cria usuários>>
+
+
+.TÉRMINO
+
+
+
+
+
+ESQUEMA: TSRJ
+ARQUIVO: GRANTS_[esquema].SQL
+-------------------------------------------------------------------------------------
+-- ARQUIVO PARA CRIAÇÃO DE USUÁRIOS E DEFINIÇÃO DE GRANTS ESQUEMA [esquema]
+-------------------------------------------------------------------------------------
+<<cria usuários>>
+
+
+.TÉRMINO
+
+
+
+
+
+ESQUEMA: TSRJ
+ARQUIVO: SEM_RESTR_[esquema].SQL
+-------------------------------------------------------------------------------------
+-- CRIAÇÃO DE SCRIPT PARA GERAR ESTRUTURA BÁSICA SEM RESTRIÇÕES [esquema]
+-------------------------------------------------------------------------------------
+ALTER TABLESPACE T_[esquema]_DAT OFFLINE;
+DROP TABLESPACE T_[esquema]_DAT INCLUDING CONTENTS;
+
+CREATE TABLESPACE T_[esquema]_DAT DATAFILE 'D:\ORACLE\ORADATA\[esquema]\TESOURO.DBF' SIZE 100M REUSE
+AUTOEXTEND ON NEXT 50M MAXSIZE UNLIMITED EXTENT MANAGEMENT LOCAL;
+
+<<cria estrutura de tabelas sem restrições>>
+<<cria usuários>>
+
+.TÉRMINO
+
+
+
+
+ESQUEMA: TSRJ;
+ARQUIVO: RESTR_[esquema].SQL
+-------------------------------------------------------------------------------------
+-- CRIAÇÃO DE SCRIPT PARA REGERAR RESTRIÇÕES DE CHAVE PRIMÁRIA, RELACIONAMENTOS E TRIGGERS DE [esquema]
+-------------------------------------------------------------------------------------
+DECLARE
+	CURSOR RESTR IS SELECT TABLE_NAME, CONSTRAINT_NAME FROM USER_CONSTRAINTS WHERE OWNER = '[esquema]' ORDER BY DECODE(CONSTRAINT_TYPE,'P', 3, 'R', 2, 1); 
+	SQLCURSOR PLS_INTEGER;
+BEGIN
+	SQLCURSOR := DBMS_SQL.OPEN_CURSOR;
+	FOR CUR IN RESTR LOOP
+		BEGIN
+			DBMS_SQL.PARSE(SQLCURSOR, 'ALTER TABLE [esquema].' || CUR.TABLE_NAME || ' DROP CONSTRAINT ' || CUR.CONSTRAINT_NAME, DBMS_SQL.V7);
+		EXCEPTION
+			WHEN OTHERS THEN
+				NULL;
+		END;
+	END LOOP;
+	DBMS_SQL.CLOSE_CURSOR(SQLCURSOR);
+END;
+/
+
+<<cria chaves primárias>>
+<<cria relacionamentos>>
+<<cria triggers>>
+
+.TÉRMINO

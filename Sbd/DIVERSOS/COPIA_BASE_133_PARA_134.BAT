@@ -1,0 +1,1 @@
+labscript -arq C:\COPIA_BASE_133_PARA_134.LAB -semconfirm -log C:\COPIA_BASE_133_PARA_134.LOG -de "lista@xxxxxxx.org.br" -para "web@xxxxxxx.com.br" -assunto "SBD - Acompanhamento cópia 133 para 134" -servidor smtpi.xxxxxxx.org.br -usuario "lista@xxxxxxx.org.br" -senha "!#mn5922"

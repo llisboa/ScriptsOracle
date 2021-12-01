@@ -1,0 +1,34 @@
+        --------------------------------------------------------------------------------------------------------------
+	-- Procedimento para excluir as parcelas 
+	--------------------------------------------------------------------------------------------------------------
+	Procedure LExclui_Parcelas is
+
+	nComp number;
+
+	begin
+
+		for CurSocio in (SELECT MAT FROM SÓCIO WHERE EXCLUÍDO = 0 ORDER BY MAT) loop
+                	nComp := 0;
+ 			SELECT COUNT(SEQ) into ncomp FROM OBRIGAÇÃO WHERE OBRIGAÇÃO OBRIG_STATUS COD = 'VENCIDA' AND INSTR(OBRIG_TIPO,'ANUIDADE-PARCELA') <> 0 AND SÓCIO_MAT = CurSocio.mAT ;	 
+                        
+			IF NVL(ncomp,0) > 0 then
+        		   DELETE FROM OBRIGAÇÃO WHERE SÓCIO_MAT = CurSocio.mAT AND INSTR(OBRIG_TIPO,'ANUIDADE-PARCELA') <> 0;
+			End If;  
+
+		end loop;
+
+
+	exception
+		when others then
+                	raise_application_error(-20000, 'Erro em LExclui_Parcelas - ' || SQLERRM);
+
+	end LExclui_Parcelas;
+
+
+
+SELECT COUNT(SEQ) FROM OBRIGAÇÃO WHERE OBRIG_STATUS_COD = 'VENCIDA' 
+AND INSTR(OBRIG_TIPO,'ANUIDADE-PARCELA') <> 0 
+AND (TO_DATE(TO_CHAR(SYSDATE,'DD/MM/YYYY'),'DD/MM/YYYY') - TO_DATE(TO_CHAR(DATA_VENCIMENTO,'DD/MM/YYYY'),'DD/MM/YYYY') > 1)
+
+
+

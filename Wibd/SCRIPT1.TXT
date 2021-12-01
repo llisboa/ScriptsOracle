@@ -1,0 +1,52 @@
+
+ESQUEMA: WIDB
+ARQUIVO: [esquema].SQL
+-------------------------------------------------------------------------------------
+-- CRIAÇÃO DE SCRIPT PARA GERAR ESTRUTURA BÁSICA [esquema]
+-------------------------------------------------------------------------------------
+ALTER TABLESPACE T_[esquema]_DAT OFFLINE;
+DROP TABLESPACE T_[esquema]_DAT INCLUDING CONTENTS;
+
+CREATE TABLESPACE T_[esquema]_DAT DATAFILE 'D:\ORACLE\ORADATA\[esquema]\[esquema].DBF' SIZE 100M REUSE
+AUTOEXTEND ON NEXT 50M MAXSIZE UNLIMITED EXTENT MANAGEMENT LOCAL;
+
+<<cria estrutura de tabelas>>
+<<cria relacionamentos>>
+<<cria triggers>>
+<<cria usuários>>
+
+
+.TÉRMINO
+
+
+ESQUEMA: ÚNICO
+ARQUIVO: RECEB.PAR
+IGNORE=Y
+FULL=N
+ROWS=Y
+TABLES=(
+<<tabelas para envio e recebimento de transferência>>
+)
+.TÉRMINO
+
+
+
+ESQUEMA: ÚNICO
+ARQUIVO: TODAS_TABELAS.PAR
+FULL=N
+ROWS=Y
+TABLES=(
+<<tabelas para envio e recebimento de transferência full>>
+)
+.TÉRMINO
+
+
+
+ESQUEMA: ÚNICO
+ARQUIVO: TRANSF.PAR
+ROWS=Y
+COMPRESS=Y
+TABLES=(
+<<tabelas para envio e recebimento de transferência>>
+)
+.TÉRMINO

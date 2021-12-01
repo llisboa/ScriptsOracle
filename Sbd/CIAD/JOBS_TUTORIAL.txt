@@ -1,0 +1,247 @@
+SCHEDULANDO PROCESSOS NO ORACLE
+
+O banco de dados Oracle possui um eficiente mecanismo para executar processos (batches/jobs) periodicamente, sem a necessidade de se utilizar a crontab do Unix ou o AT do Windows. 
+
+Este processo utiliza-se do pacote DBMS_JOB, que possui algumas procedures que permitem agendar, modificar, executar, consultar, remover os processos (batches/jobs) dentro do banco de dados Oracle. 
+
+
+Iniciando o processo 
+
+Para utilizar o pacote DBMS_JOB, deve-se antes verificar alguns itens fundamentais. 
+
+1.Se os parâmetros abaixo estão configurados no arquivo de configuração do banco de dados (init.ora), caso eles não estejam configurados, segue abaixo uma sugestão de configuração: 
+
+job_queue_processes = 2 
+job_queue_interval = 60 
+
+2.Também deve-se verificar se o pacote DBMS_JOB está criado no banco de dados. Para criá-lo deve-se executar o script “dbms_job.sql”, que encontra-se no $ORACLE_HOME/rdbms/admin (para o ambiente Unix ou Linux) e $ORACLE_HOME\RDBMS\admin (para o ambiente Windows). 
+
+Para gerenciar os processos que estão “schedulados” dentro do banco de dados existe uma view chamada DBA_JOBS. 
+
+Abaixo segue a estrutura da view DBA_JOBS: 
+
+Name Null? Type 
+------------------------ -------- ------------------ 
+JOB NOT NULL NUMBER 
+LOG_USER NOT NULL VARCHAR2(30) 
+PRIV_USER NOT NULL VARCHAR2(30) 
+SCHEMA_USER NOT NULL VARCHAR2(30) 
+LAST_DATE DATE 
+LAST_SEC VARCHAR2(8) 
+THIS_DATE DATE 
+THIS_SEC VARCHAR2(8) 
+NEXT_DATE NOT NULL DATE 
+NEXT_SEC VARCHAR2(8) 
+TOTAL_TIME NUMBER 
+BROKEN VARCHAR2(1) 
+INTERVAL NOT NULL VARCHAR2(200) 
+FAILURES NUMBER 
+WHAT VARCHAR2(4000) 
+NLS_ENV VARCHAR2(4000) 
+MISC_ENV RAW(32) 
+INSTANCE NUMBER 
+
+Para visualizar os jobs pode-se utilizar a query abaixo: 
+
+SELECT JOB, 
+SUBSTR(WHAT,1,35), 
+NEXT_DATE, 
+NEXT_SEC, 
+BROKEN 
+FROM DBA_JOBS; 
+
+
+JOB SUBSTR(WHAT,1,35) NEXT_DATE NEXT_SEC B 
+---------- ----------------------------------- --------- -------- - 
+1 DBA.TESTE_001; 21-MAR-03 17:04:02 N 
+2 DBA.TESTE_002; 21-MAR-03 17:28:13 N 
+3 DBA.TESTE_003; 21-MAR-03 17:02:37 N 
+4 DBA.TESTE_004; 26-MAR-03 08:00:00 N 
+
+A seguir vamos descrever as funcionalidades das procedures que compõem o pacote DBMS_JOB. 
+
+As procedures e suas funcionalidades 
+
+DBMS_JOB.SUBMIT => Esta procedure é utilizada para submeter um job na fila do banco de dados. 
+
+Sintaxe: 
+DBMS_JOB.SUBMIT ( JOB OUT BINARY_INTEGER, 
+WHAT IN VARCHAR2, 
+NEXT_DATE IN DATE DEFAULTSYSDATE, 
+INTERVAL IN VARCHAR2 DEFAULT 'NULL', 
+NO_PARSE IN BOOLEAN DEFAULT FALSE, 
+INSTANCE IN BINARY_INTEGER DEFAULT ANY_INSTANCE, 
+FORCE IN BOOLEAN DEFAULT FALSE); 
+
+Job - Identifica o número do job que será criado; 
+what - Nome do código PL/SQL que será executado; 
+next_date - Próxima data em que o job será executado. O valor default é o SYSDATE; 
+Interval - Função que calcula o intervalo em que o job será executado. O valor default é NULO; 
+no_parse - Se indicado como FALSE (valor default), o Oracle associa os “parses” da procedure ao job. Se indicado como TRUE, então a procedure terá seu “parse” durante a primeira execução do job; 
+instance - Especifica qual a instância poderá executar o job; 
+force - Se indicado como TRUE força a execução de um job. 
+
+Exemplo: 
+VARIABLE jobno NUMBER 
+BEGIN 
+DBMS_JOB.SUBMIT (:jobno,'DBA.TESTE001;',SYSDATE,'SYSDATE+(59/(24*60*60))'); 
+COMMIT; 
+END; 
+/ 
+PRINT jobno 
+
+JOBNO 
+---------- 
+5 
+
+No exemplo acima a procedure está executando um job chamado TESTE001. O job de número 5 será executado a cada 60 segundos. 
+
+DBMS_JOB.REMOVE => Procedure que remove um job da fila de execução. 
+
+Sintaxe: 
+
+DBMS_JOB.REMOVE (job IN BINARY_INTEGER); 
+Job - Número do job que será removido. 
+
+Exemplo: 
+EXECUTE DBMS_JOB.REMOVE(2); 
+
+
+DBMS_JOB.CHANGE => Procedure que permite a alteração de alguns parâmetros de um job na fila de execução. 
+
+Sintaxe: 
+
+DBMS_JOB.CHANGE ( 
+job IN BINARY_INTEGER, 
+what IN VARCHAR2, 
+next_date IN DATE, 
+interval IN VARCHAR2, 
+instance IN BINARY_INTEGER DEFAULT NULL, 
+force IN BOOLEAN DEFAULT FALSE); 
+
+job - Este parâmetro identifica o número do job que será alterado; 
+what - Nome do código PL/SQL que será executada; 
+next_date - Próxima data em que o job será executado; 
+interval - Função que calcula o intervalo que o job será executado; 
+instance - Especifica qual a instância poderá executar o job; 
+force - Se indicado como TRUE força a execução de um job. 
+
+Exemplo: 
+
+EXECUTE DBMS_JOB.CHANGE(1,null,sysdate+3,null); 
+
+Se a data do sistema for igual a 24/03/2003, então o “sysdate+3” será 27/03/2003. 
+
+DBMS_JOB.WHAT => Procedure que altera o código de PL/SQL a ser chamado. 
+
+Sintaxe: 
+DBMS_JOB.WHAT( 
+job IN BINARY_INTEGER, 
+what IN VARCHAR2); 
+
+job - Número do job que será alterado; 
+what - O nome do código PL/SQL que será executada. 
+
+Exemplo: 
+O exemplo mostra a alteração do job 3. A procedure TESTE001 será substituída pela procedure TESTE003. 
+
+execute DBMS_JOB.WHAT(3,'DBA.TESTE003;'); 
+
+
+DBMS_JOB.NEXT_DATE =>Procedure que altera o job para a próxima data a ser executada. 
+
+Sintaxe: 
+
+DBMS_JOB.NEXT_DATE ( 
+JOB IN BINARY_INTEGER, 
+NEXT_DATE IN DATE); 
+
+Job - Este parâmetro identifica o número do job que será alterado; 
+next_date - A próxima data em que o job será executado. 
+
+Exemplo: 
+execute DBMS_JOB.NEXT_DATE(4,SYSDATE+3); 
+
+Se a data do sistema for igual a 24/03/2003, então o “sysdate+3” será 27/03/2003. 
+
+DBMS_JOB.INTERVAL =>Procedure que altera o intervalo de execução de um job. 
+
+Sintaxe: 
+DBMS_JOB.INTERVAL ( 
+job IN BINARY_INTEGER, 
+interval IN VARCHAR2); 
+
+job - Este parâmetro identifica o número do “job” que será alterado; 
+interval - Função que calcula o intervalo que o “job” será executado. 
+
+
+Abaixo segue um resumo de intervalos do jobs: 
+
+DESCRIÇÃO INTERVALOS – PARÂMETROS 
+Execução diária ‘SYSDATE + 1’ 
+Execução horária ‘SYSDATE + 1/24’ 
+Execução a cada 10 minutos ‘SYSDATE + 10/1440’ 
+Execução a cada 30 segundos ‘SYSDATE + 30/86400’ 
+Para remover ou não reexecutar NULL 
+o JOB 
+Execução diária às 24:00 hs. ‘TRUNC(SYSDATE + 1)’ 
+Execução diária às 20:00 hs. ‘TRUNC(SYSDATE + 1) +8/24’ 
+Execução as quarta-feiras ‘NEXT_DAY(‘TRUNC 
+às 12:00 hs. (SYSDATE), “TUESDAY”) 
++ 12/24’ 
+Execução no primeiro dia do ‘TRUNC(LAST_DAY(SYSDATE) 
+mês as 24:00 hs. + 1)’ 
+Execução no último quadrimestre ‘TRUNC(ADD_MONTHS 
+às 11:00 hs. (SYSDATE + 2/24,3), ‘Q’) – 
+1/24’ 
+Execução todas as segundas, ‘TRUNC(LEAST(NEXT_DAY 
+quartas e sextas-feiras SYSDATE, “MONDAY”), 
+as 9:00 hs. NEXT_DAY (SYSDATE, 
+”WEDNESDAY”),NEXT_DAY 
+(SYSDATE,”FRIDAY”))) + 
+9/24’ 
+
+DBMS_JOB.BROKEN =>Procedure usada para habilitar/desabilitar o “flag” de broken. Quando este flag é habilitado o job não é re-executado automaticamente. 
+
+Sintaxe: 
+
+DBMS_JOB.BROKEN ( 
+Job in binary_integer, 
+Broken in boolea, 
+Next_date in date default sysdate); 
+
+Job - Este parâmetro identifica o número do “job” que será alterado; 
+broken - TRUE ou FALSE; 
+next_date - Próxima data em que o “job” será executado. 
+
+Exemplo: 
+execute DBMS_JOB.BROKEN(4, TRUE); 
+
+O job 4 será habilitado como broken e na próxima execução o job não será executado. 
+
+DBMS_JOB.RUN =>Procedure que executa immediatamente um job. 
+
+Sintaxe: 
+
+DBMS_JOB.RUN ( 
+job IN BINARY_INTEGER 
+force IN BOOLEAN DEFAULT FALSE); 
+
+job - Número do job que será executado; 
+force - Se indicado como TRUE força a execução de um job. 
+
+Exemplo: 
+execute dbms_job.run(4); 
+
+
+Resumo das procedures: 
+DBMS_JOB.SUBMIT (No. Job,what,next_date,interval); 
+DBMS_JOB.REMOVE (No. Job); 
+DBMS_JOB.CHANGE (No. Job,what,next_date,interval); 
+DBMS_JOB.WHAT (No. Job,'PL/SQL'); 
+DBMS_JOB.NEXT_DATE (No. Job,Next_DATE); 
+DBMS_JOB.INTERVAL (No. Job, interval); 
+DBMS_JOB.BROKEN (No. Job, True/False, next_date); 
+DBMS_JOB.RUN (No. Job); 
+
+Este artigo descreveu como as procedures da package DBMS_JOB podem ajudar o usuário a criar, modificar, remover os jobs em sua aplicação. 

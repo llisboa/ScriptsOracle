@@ -1,0 +1,917 @@
+CREATE OR REPLACE PACKAGE LSBD is
+  Function  LSocio_Isento (nMat in number) Return varchar2;
+  Function  LPrimLetraMaius(TEXTO in Varchar2) Return varchar2;
+  Function  LVal_CPF(CPF VARCHAR2) Return Varchar2;
+  Function  LDif_Data (max_date STRING, min_date STRING) RETURN PLS_INTEGER;
+  Function  DIA_UTIL(vData in date) RETURN string;
+  Function  LMaiusculaSemAcento(CAMPO in Varchar2) Return varchar2;
+  Procedure LSocio_Status (nMat in number, bTrigger in boolean default false);
+  Procedure LObrigacao_Status (nMat in number,Atualiza in boolean default FALSE);
+  Procedure LAltera_Categoria;
+  Procedure LAtualiza_Obrig_Status (Atualiza in boolean default FALSE);
+  Procedure LAtualiza_Socio_Status (Atualiza in boolean default FALSE);
+  Procedure LExclui_Parcelas(nMat in number);
+  Procedure LAtualiza_Licenciados;
+  Procedure LAtualiza_Penalizado;
+  PROCEDURE LBiblio_Despesas(vAnuidade in Varchar2);
+  PROCEDURE LEnviaLog;
+  Function LValidaEmail(email varchar2) return varchar2;
+  Procedure LAtualiza_Geral;
+end;
+/
+
+create or replace PACKAGE BODY lsbd is
+----------------------------------------------------------------------------------------------------
+-- Procedimento para excluir as parcelas
+----------------------------------------------------------------------------------------------------
+Procedure LExclui_Parcelas(nMat in number)  is
+  nComp Integer;
+  vMat Number;
+begin
+  nComp := 0;
+  vMat := nMat;
+  SELECT COUNT(SEQ) INTO nComp FROM SBDB.OBRIGAÇÃO WHERE OBRIG_STATUS_COD = 'VENCIDA'  AND INSTR(OBRIG_TIPO,'ANUIDADE-PARCELA') <> 0 AND SÓCIO_MAT = vMat AND (TO_DATE(TO_CHAR(SYSDATE,'DD/MM/YYYY'),'DD/MM/YYYY') - TO_DATE(TO_CHAR((SELECT DATA_LIMITE_VENCIMENTO+DIAS_VALIDADE FROM SBDB.PARAMETRO_FINANCEIRO WHERE ANUIDADE = TO_CHAR(SYSDATE,'YYYY')),'DD/MM/YYYY'),'DD/MM/YYYY') > 1);
+  if nComp >= 3 then
+    DELETE FROM SBDB.OBRIGAÇÃO WHERE SÓCIO_MAT = vMat AND OBRIG_TIPO LIKE 'ANUIDADE-PARCELA%' AND TO_CHAR(COMPETÊNCIA,'YYYY') = TO_CHAR(SYSDATE,'YYYY');
+  end if;
+exception
+  when others then
+    raise_application_error(-20000, 'Erro em LExclui_Parcelas - ' || SQLERRM);
+end LExclui_Parcelas;
+--------------------------------------------------------------------------------------------------------------
+-- Altera a categoria dos sócios ASPIRANTES, com 5 anos de cadastro, para sócios CONTRIBUINTES.
+--------------------------------------------------------------------------------------------------------------
+Procedure LAltera_Categoria is
+  nCategSeq number;
+begin
+  -- Seleciona os sócio ASPIRANTES com 5 anos(1826 dias) entre a data de cadastro e a data atual.
+  -- Atualiza a categoria para CONTRIBUINTE, e insere na tabela de SÓCIO_CATEGORIA com a Obs. "ALTERAÇÃO DE CATEGORIA CONFORME ESTATUTO".
+  for Cur in (SELECT MAT,CATEGORIA_COD,DATA_CADASTRO FROM SBDB.SÓCIO WHERE CATEGORIA_COD = 'ASPIRANTE' AND ABS(TRUNC(SYSDATE - DATA_CADASTRO)) >= 2190 ORDER BY MAT) loop
+    SELECT NVL(MAX(SEQ),0)+ 1 AS SEQ INTO nCategSeq FROM SBDB.SÓCIO_CATEGORIA WHERE SÓCIO_MAT = Cur.MAT;
+    UPDATE SBDB.SÓCIO SET CATEGORIA_COD = 'CONTRIBUINTE', SYS_STATUS = 'X' WHERE MAT = Cur.MAT;
+    INSERT INTO SÓCIO_CATEGORIA (SÓCIO_MAT,CATEGORIA_COD,SEQ,DATA_ALTERAÇÃO,OBS) VALUES (Cur.MAT,'CONTRIBUINTE',nCategSeq,TO_DATE(TO_CHAR(Cur.DATA_CADASTRO,'DD/MM')||'/'||TO_CHAR(SYSDATE,'YYYY'),'dd/mm/yyyy'),'ALTERAÇÃO DE CATEGORIA CONFORME NOVO ESTATUTO (6 ANOS)');
+  end loop;
+  Commit;
+exception
+  when others then
+    raise_application_error(-20000, 'Erro em LAltera_Categoria - ' || SQLERRM);
+end LAltera_Categoria;
+
+--------------------------------------------------------------------------------------------------------------
+-- Procedimento para atualizar o status(FIN) das obrigações pertinentes aos sócios
+---------------------------------------------------------------------------------------------------------------
+Procedure LAtualiza_Obrig_Status(Atualiza in boolean default FALSE) is
+  nI NUMBER;
+--  nMat NUMBER;
+Cursor CurSocio IS SELECT MAT FROM SBDB.SÓCIO WHERE MAT > 0 AND EXCLUÍDO = 0 ORDER BY MAT;
+Begin
+  nI := 0;
+  for Cur in CurSocio loop
+--     nMAT := CUR.MAT;
+    LSBD.LOBRIGACAO_STATUS(CUR.MAT, Atualiza);
+    nI := nI + 1;
+  end loop;
+  Commit;
+exception
+  when others then
+  begin
+    Close CurSocio;
+    raise_application_error(-20000, 'Erro em LAtualiza_Obrig_Status - ' || SQLERRM);
+  end;
+end LAtualiza_Obrig_Status;
+--------------------------------------------------------------------------------------------------------------
+-- Altera o Status da Obrigação de acordo com o pagamento realizado.
+--------------------------------------------------------------------------------------------------------------
+Procedure LObrigacao_Status(nMat in number, Atualiza in boolean default FALSE) is
+  -- Declaração do cursor
+  CURSOR CUR_OBRIGPAG IS
+        SELECT O.SÓCIO_MAT,
+               O.SEQ,
+               O.DATA_LANÇAMENTO,
+               O.DATA_VENCIMENTO,
+               ROUND(NVL(O.VALOR,0),2) AS OBRIG_VALOR,
+               DECODE(P.DATA,NULL, TO_NUMBER(TO_CHAR(O.DATA_VENCIMENTO,'J'))-TO_NUMBER(TO_CHAR(SYSDATE,'J')), TO_NUMBER(TO_CHAR(O.DATA_VENCIMENTO,'J')) - TO_NUMBER(TO_CHAR(P.DATA,'J'))) AS DIAS_ATRASO,
+               RTRIM(LTRIM(O.OBRIG_TIPO)) AS TIPO,
+               O.COMPETÊNCIA,
+               O.OBRIG_STATUS_COD,
+               P.DATA AS PAG_DATA,
+               ROUND(NVL(P.VALOR,0),2) AS PAG_VALOR,
+               ROUND(NVL(P.DESCONTO,0),2) AS PAG_DESC,
+               ROUND(NVL(P.MULTA,0),2) AS PAG_MULTA
+        FROM SBDB.OBRIGAÇÃO O,SBDB.PAGAMENTO P
+        WHERE ((O.OBRIG_STATUS_COD NOT IN ('SUBSTITUIDA','CANCELADA')) OR
+                O.OBRIG_STATUS_COD IS NULL) AND
+                P.OBRIG_SEQ(+) = O.SEQ AND
+                P.SÓCIO_MAT(+) = O.SÓCIO_MAT AND
+                O.SÓCIO_MAT = nMat
+        GROUP BY O.SÓCIO_MAT,O.SEQ,O.DATA_LANÇAMENTO,
+                O.DATA_VENCIMENTO,O.VALOR,O.OBRIG_TIPO,p.data,
+                p.valor,P.DESCONTO,P.MULTA,P.JUROS,
+                O.COMPETÊNCIA,O.OBRIG_STATUS_COD
+        ORDER BY O.SEQ;
+  -- Declaração das variáveis
+  vSocioMat         SBDB.OBRIGAÇÃO.SÓCIO_MAT%type;
+  vSeq              SBDB.OBRIGAÇÃO.SEQ%type;
+  vObrigStatus      SBDB.OBRIGAÇÃO.OBRIG_STATUS_COD%type;
+  vObrigStatusCod   SBDB.OBRIGAÇÃO.OBRIG_STATUS_COD%type;
+  vPagValDesc       SBDB.PAGAMENTO.DESCONTO%type;
+  vAnuidade         varchar2(4);
+  vAnuidade_Vigente varchar2(4);
+  vLog_Obrig_Status CLOB;
+  vData_Limite      date;
+  vPagData          Date;
+  vPagDataVenc      Date;
+  vPagValor         Float;
+  vValPgto          Float;
+  vObrigValor       Float;
+  vCompetencia      Date;
+  vDiaAtraso        Float;
+  vTipo             SBDB.OBRIGAÇÃO.OBRIG_TIPO%type;
+  vPagDesc          Float;
+  vPagValMulta      Float;
+  vDiasTolerancia   Integer;
+  VDataTolerancia   Date;
+  VDataVencToler    Date;
+  vData_Atual       Date;
+  vOP               Integer;
+  vSocioT           Integer;
+begin
+  -- Cursor para seleção das obrigações e pagamentos do sócio.
+  vAnuidade_Vigente := TO_CHAR(SYSDATE,'YYYY');
+  vData_Atual := SYSDATE;
+  --vData_Atual := TO_DATE('10/05/2008','DD/MM/YYYY');
+  FOR vOP in CUR_OBRIGPAG
+  LOOP
+    vSocioMat       := vOP.SÓCIO_MAT;
+    vSeq             := vOP.SEQ;
+    vAnuidade       := TO_CHAR(vOP.COMPETÊNCIA,'YYYY');
+    vCompetencia    := vOP.COMPETÊNCIA;
+    vPagData        := vOP.PAG_DATA;
+    vPagValor       := vOP.PAG_VALOR;
+    vPagValDesc     := vOP.PAG_DESC;
+    vPagValMulta    := vOP.PAG_MULTA;
+    vPagDataVenc    := vOP.DATA_VENCIMENTO;
+    vObrigValor     := vOP.OBRIG_VALOR;
+    vValPgto        := vPagValor + vPagValDesc - vPagValMulta;
+    vTipo           := vOP.TIPO;
+    vDiaAtraso      := vOP.DIAS_ATRASO;
+    vObrigStatus    := '';
+    select DATA_LIMITE_VENCIMENTO, DIAS_VALIDADE INTO vData_Limite, vDiasTolerancia FROM SBDB.PARAMETRO_FINANCEIRO WHERE ANUIDADE = vAnuidade;
+    VDataTolerancia := vData_Limite + vDiasTolerancia;
+    VDataVencToler  := vPagDataVenc + vDiasTolerancia;
+    --SE A DATA DE PAGAMENTO FOR NULA SIGNIFICA QUE NÃO EXISTE PAGAMENTO
+    if vTipo <> 'PARCELAMENTO' then
+      if vTipo = 'ANUIDADE' then
+        if (vOP.PAG_DATA IS NULL) then
+          -- OBS: FOI ASSUMIDO QUE EXISTIRÁ UM DATA DE VENCIMENTO ÚNICA TANTO PARA AS PARCELAS QUANTO PARA COTA ÚNICA, TEREI QUE COLOCAR UMA CONSULTA PARA PEGAR NA TABELA PARÂMETRO A DATA INFORMADA E COMPARAR COM A DATA DE VENCIMENTO, ASSIM FICARIA:
+          if (TO_DATE(TO_CHAR(vData_Atual,'DD/MM/YYYY'),'DD/MM/YYYY')) <= (TO_DATE(TO_CHAR(VDataVencToler,'DD/MM/YYYY'),'DD/MM/YYYY')) then
+            vObrigStatus := 'EM ABERTO';
+          else
+            vObrigStatus := 'VENCIDA';
+          end if;
+        else
+          -- SEGUINDO A OBSERVAÇÃO ACIMA A CONDIÇÃO ACIMA:
+          if (vObrigValor) <= (vValPgto) then
+            vObrigStatus := 'BAIXADA';
+          else
+            vObrigStatus := 'EM ABERTO';
+          end if;
+        end if;
+     else
+        if (vOP.PAG_DATA IS NULL) then
+          -- OBS: FOI CRIADO ESSA ALTERNATIVA PARA A ADRIANA UTILIZAR O TIPO ANUIDADE COM VALORES NÃO FIXADOS NA CATEGORIA:
+          if (TO_DATE(TO_CHAR(vData_Atual,'DD/MM/YYYY'),'DD/MM/YYYY')) <= (TO_DATE(TO_CHAR(vPagDataVenc,'DD/MM/YYYY'),'DD/MM/YYYY')) then
+            vObrigStatus := 'EM ABERTO';
+          else
+            vObrigStatus := 'VENCIDA';
+          end if;
+        else
+          -- SEGUINDO A OBSERVAÇÃO ACIMA A CONDIÇÃO ACIMA:
+          if (vObrigValor) <= (vValPgto) then
+            vObrigStatus := 'BAIXADA';
+          else
+            vObrigStatus := 'EM ABERTO';
+          end if;
+        end if;
+      end if;
+    else
+      if (vOP.PAG_DATA IS NULL) then
+        -- OBS: FOI ASSUMIDO QUE EXISTIRÁ UM DATA DE VENCIMENTO ÚNICA TANTO PARA AS PARCELAS QUANTO PARA COTA ÚNICA, TEREI QUE COLOCAR UMA CONSULTA PARA PEGAR NA TABELA PARÂMETRO A DATA INFORMADA E COMPARAR COM A DATA DE VENCIMENTO, ASSIM FICARIA:
+        if (TO_DATE(TO_CHAR(vData_Atual,'DD/MM/YYYY'),'DD/MM/YYYY')) <= (TO_DATE(TO_CHAR(vPagDataVenc,'DD/MM/YYYY'),'DD/MM/YYYY')) then
+          vObrigStatus := 'EM ABERTO';
+        else
+          vObrigStatus := 'VENCIDA';
+        end if;
+      else
+        -- SEGUINDO A OBSERVAÇÃO ACIMA A CONDIÇÃO ACIMA:
+        if (vObrigValor) <= (vValPgto) then
+          vObrigStatus := 'BAIXADA';
+        else
+          vObrigStatus := 'EM ABERTO';
+        end if;
+      end if;
+    end if;
+    if Atualiza then
+      UPDATE SBDB.OBRIGAÇÃO SET OBRIG_STATUS_COD = vObrigStatus WHERE SÓCIO_MAT = vSocioMat AND SEQ = vSeq;
+    ELSE
+      UPDATE SBDB.OBRIGAÇÃO SET OBRIG_STATUS_COD = vObrigStatus, SYS_STATUS = 'X' WHERE SÓCIO_MAT = vSocioMat AND SEQ = vSeq;
+    END IF;
+  end loop;
+  -- VARIÁVEL QUE ARMAZENARÁ OS DADOS QUE IRÃO PARA A TABELA SÓCIO
+  vLog_Obrig_Status := vLog_Obrig_Status ||'['|| vAnuidade ||'|('|| TO_CHAR(vObrigValor) ||')-('|| TO_CHAR(vValPgto) ||')='||TO_CHAR((vObrigValor)-(vValPgto)) ||'|'|| vObrigStatus ||'] ';
+  LExclui_Parcelas(nMat);
+  -- ATUALIZA O CAMPO SYS_LOG_STATUS_COD PARA PODER SER CHECADO SE O STATUS DA OBRIGAÇÃO VERÍDICO
+  UPDATE SBDB.SÓCIO SET OBRIG_STATUS_LOG = vLog_Obrig_Status, SYS_STATUS = 'X' WHERE MAT = vSocioMat;
+exception
+  when others then
+  begin
+    Close CUR_OBRIGPAG;
+    raise_application_error(-20000, 'Erro em LObrigacao_Status - ' || SQLERRM);
+  end;
+end LObrigacao_Status;
+
+--------------------------------------------------------------------------------------------------------------
+-- Procedimento para atualizar o status(FIN) de todos sócio
+--------------------------------------------------------------------------------------------------------------
+Procedure LAtualiza_Socio_Status(Atualiza in boolean default FALSE) is
+  Cursor CurSocio IS SELECT MAT FROM SBDB.SÓCIO WHERE MAT > 0 AND EXCLUÍDO = 0 ORDER BY MAT;
+  Begin
+    for Cur in CurSocio loop
+      LSBD.LSOCIO_STATUS(CUR.MAT , Atualiza);
+      commit;
+    end loop;
+  exception
+    when others then
+    begin
+      Close CurSocio;
+      raise_application_error(-20000, 'Erro em LAtualiza_Socio_Status - ' || SQLERRM);
+    end;
+end LAtualiza_Socio_Status;
+
+-------------------------------------------------------------------------------------------------------------
+-- Altera o Status do sócio de acordo com os status das obrigações.
+--------------------------------------------------------------------------------------------------------------
+Procedure LSocio_Status(nMat in number, bTrigger in boolean default false) is
+  vStatus SBDB.SÓCIO.OBRIG_STATUS_COD%type;
+  vObrigStatusCod SBDB.SÓCIO.OBRIG_STATUS_COD%type;
+  vDataAtual date;
+  vDataLimite date;
+  vDataTolerancia date;
+  vCompetenciaAtual Varchar2(4);
+  vDiasValidade number;
+  nS number;
+begin
+  vStatus := '';
+  vObrigStatusCod := '';
+  nS := 0;
+  vDataAtual := TO_DATE(LB.LExibeData(SYSDATE,'sd'),'DD/MM/YYYY');
+  --vDataAtual := TO_DATE('01/01/2011','DD/MM/YYYY');
+  SELECT TO_DATE(TO_CHAR(DATA_LIMITE_VENCIMENTO,'DD/MM/YYYY'),'DD/MM/YYYY'), TO_DATE(TO_CHAR(DATA_LIMITE_VENCIMENTO + DIAS_VALIDADE,'DD/MM/YYYY'),'DD/MM/YYYY'),DIAS_VALIDADE INTO vDataLimite, vDataTolerancia, vDiasValidade FROM SBDB.PARAMETRO_FINANCEIRO WHERE ANUIDADE = (SELECT MAX(ANUIDADE) FROM SBDB.PARAMETRO_FINANCEIRO) ;
+  --SELECT TO_CHAR(SYSDATE,'YYYY') INTO vCompetenciaAtual FROM DUAL;
+  SELECT MAX(ANUIDADE) INTO vCompetenciaAtual FROM SBDB.PARAMETRO_FINANCEIRO;
+  SELECT OBRIG_STATUS_COD INTO vObrigStatusCod FROM SBDB.SÓCIO WHERE MAT = nMat;
+  select
+  decode((SELECT MAT FROM SBDB.SÓCIO WHERE MAT = nMat AND MAT NOT IN (SELECT SÓCIO_MAT FROM SBDB.OBRIGAÇÃO WHERE SÓCIO_MAT = nMat GROUP BY SÓCIO_MAT) AND LSBD.LSOCIO_ISENTO(MAT) IS NULL),NULL,
+  decode((SELECT LSBD.LSOCIO_ISENTO(nMat) FROM DUAL),NULL,
+  decode((SELECT SOCIO_MAT FROM SBDB.HISTORICO_LICENCIADO WHERE SOCIO_MAT = nMat AND vDataAtual BETWEEN DATA_INICIO AND data_final GROUP BY socio_mat),NULL,
+  decode((SELECT A + B FROM (SELECT COUNT(SÓCIO_MAT||SEQ) AS A FROM SBDB.OBRIGAÇÃO WHERE SÓCIO_MAT = nMat AND (OBRIG_TIPO <> 'PARCELAMENTO' AND OBRIG_TIPO <> 'ANUIDADE') AND OBRIG_STATUS_COD NOT IN ('CANCELADA','SUBSTITUIDA') AND SÓCIO_MAT||SEQ NOT IN (SELECT SÓCIO_MAT||OBRIG_SEQ FROM SBDB.PAGAMENTO WHERE SÓCIO_MAT = nMat) AND ((TO_CHAR(COMPETÊNCIA,'YYYY') < vCompetenciaAtual) OR ((vDataAtual) > (vDataTolerancia)))) A, (SELECT COUNT(SÓCIO_MAT||SEQ) AS B FROM SBDB.OBRIGAÇÃO WHERE SÓCIO_MAT = nMat AND (OBRIG_TIPO = 'PARCELAMENTO'  OR OBRIG_TIPO = 'ANUIDADE')  AND OBRIG_STATUS_COD NOT IN ('CANCELADA','SUBSTITUIDA') AND  SÓCIO_MAT||SEQ NOT IN (SELECT SÓCIO_MAT||OBRIG_SEQ FROM SBDB.PAGAMENTO WHERE SÓCIO_MAT = nMat) AND TO_DATE(TO_CHAR(SYSDATE,'DD/MM/YYYY'),'DD/MM/YYYY') > TO_DATE(TO_CHAR(DATA_VENCIMENTO,'DD/MM/YYYY'),'DD/MM/YYYY')) B),0,
+  decode((SELECT A + B FROM (SELECT COUNT(SÓCIO_MAT||SEQ) AS A FROM SBDB.OBRIGAÇÃO WHERE SÓCIO_MAT = nMat AND OBRIG_TIPO NOT IN ('PARCELAMENTO','ANUIDADE') AND OBRIG_STATUS_COD NOT IN ('CANCELADA','SUBSTITUIDA') AND SÓCIO_MAT||SEQ NOT IN (SELECT SÓCIO_MAT||OBRIG_SEQ FROM SBDB.PAGAMENTO WHERE SÓCIO_MAT = nMat) AND (TO_CHAR(COMPETÊNCIA,'YYYY') = TO_CHAR(vDataAtual,'YYYY')) AND ((TO_CHAR(vDataAtual,'DD/MM/YYYY') > (vDataLimite)) AND ((vDataAtual) <= (vDataTolerancia)))) A,(SELECT COUNT(SÓCIO_MAT||SEQ) AS B FROM SBDB.OBRIGAÇÃO WHERE SÓCIO_MAT = nMat AND OBRIG_TIPO IN ('PARCELAMENTO','ANUIDADE') AND OBRIG_STATUS_COD NOT IN ('CANCELADA','SUBSTITUIDA') AND SÓCIO_MAT||SEQ NOT IN (SELECT SÓCIO_MAT||OBRIG_SEQ FROM SBDB.PAGAMENTO WHERE SÓCIO_MAT = nMat) AND (TO_CHAR(COMPETÊNCIA,'YYYY') = TO_CHAR(vDataAtual,'YYYY')) AND ((To_date(TO_CHAR(vDataAtual,'DD/MM/YYYY'),'DD/MM/YYYY') > (To_date(TO_CHAR(DATA_VENCIMENTO,'DD/MM/YYYY'),'DD/MM/YYYY'))) AND ((To_date(TO_CHAR(vDataAtual,'DD/MM/YYYY'),'DD/MM/YYYY') <= (To_date(TO_CHAR(DATA_VENCIMENTO + vDiasValidade,'DD/MM/YYYY'),'DD/MM/YYYY')))))) B),0,
+  decode((SELECT A + B FROM (SELECT COUNT(SÓCIO_MAT||SEQ) AS A FROM SBDB.OBRIGAÇÃO WHERE SÓCIO_MAT = nMat AND OBRIG_STATUS_COD NOT IN ('CANCELADA','SUBSTITUIDA') AND SÓCIO_MAT||SEQ NOT IN (SELECT SÓCIO_MAT||OBRIG_SEQ FROM SBDB.PAGAMENTO WHERE SÓCIO_MAT = nmat)) A, (SELECT COUNT(SÓCIO_MAT||SEQ) AS B FROM SBDB.OBRIGAÇÃO WHERE SÓCIO_MAT = nMat AND (OBRIG_TIPO = 'PARCELAMENTO'  OR OBRIG_TIPO = 'ANUIDADE') AND SÓCIO_MAT||SEQ NOT IN (SELECT SÓCIO_MAT||OBRIG_SEQ FROM SBDB.PAGAMENTO WHERE SÓCIO_MAT = nMat) AND TO_DATE(TO_CHAR(SYSDATE,'DD/MM/YYYY'),'DD/MM/YYYY') <= TO_DATE(TO_CHAR(DATA_VENCIMENTO,'DD/MM/YYYY'),'DD/MM/YYYY')) B),0,
+  'QUITE',
+  'QUITE - CO'),
+  'QUITE - TL'),
+  'INADIMPLENTE'),
+  'LICENCIADO'),
+  LSBD.LSOCIO_ISENTO(nMat)),
+  'RECENTE') INTO vStatus FROM DUAL;
+  if (vObrigStatusCod <> vStatus) then
+    if bTrigger then
+      UPDATE SÓCIO SET OBRIG_STATUS_COD = vStatus, OBRIG_STATUS_DATA = SYSDATE WHERE MAT = nMat;
+    else
+      UPDATE SÓCIO SET OBRIG_STATUS_COD = vStatus, OBRIG_STATUS_DATA = SYSDATE, SYS_STATUS = 'X' WHERE MAT = nMat;
+    end if;
+  end if;
+  BEGIN
+    begin
+    SELECT O.SÓCIO_MAT INTO nS FROM OBRIGAÇÃO O FULL OUTER JOIN (SELECT P.SÓCIO_MAT, P.SÓCIO_MAT||P.OBRIG_SEQ AS MS FROM SBDB.PAGAMENTO P) P ON P.MS = O.SÓCIO_MAT||O.SEQ WHERE O.OBRIG_TIPO LIKE 'ANUIDADE%' AND O.SÓCIO_MAT=nMat AND O.DATA_VENCIMENTO+5 > (SELECT TO_CHAR(DATA_LIMITE_VENCIMENTO + DIAS_VALIDADE,'DD/MM/YYYY') AS vDataTolerancia FROM SBDB.PARAMETRO_FINANCEIRO WHERE ANUIDADE = TO_CHAR(sysdate,'YYYY')) AND TO_DATE(TO_CHAR(SYSDATE,'DD/MM/YYYY'),'DD/MM/YYYY') <= TO_DATE(TO_CHAR(O.DATA_VENCIMENTO+5,'DD/MM/YYYY'),'DD/MM/YYYY') AND P.MS IS NULL ORDER BY O.SÓCIO_MAT;
+    exception
+      when others then
+        nS := 0;
+    end;
+    if (nMat=nS) then
+      SELECT COUNT(*) INTO NS FROM SBDB.PAGAMENTO P WHERE P.SÓCIO_MAT = NMAT;
+      IF NS=0 THEN
+      	UPDATE SÓCIO SET OBRIG_STATUS_COD = 'RECENTE', OBRIG_STATUS_DATA = SYSDATE, SYS_STATUS = 'X' WHERE MAT = nMat;
+      ELSE
+        UPDATE SÓCIO SET OBRIG_STATUS_COD = 'QUITE - CO', OBRIG_STATUS_DATA = SYSDATE, SYS_STATUS = 'X' WHERE MAT = nMat;
+      END IF;
+    end if;
+  END;
+  exception
+    when others then
+    begin
+      nS := nMat;
+      raise_application_error(-20000, 'Erro em LSocio_Status - ' || SQLERRM);
+    end;
+end LSocio_Status;
+
+----------------------------------------------------------------------------------------------------
+-- Função que verifica se o sócio é isento ou não, seguindo os critérios estabelecidos no estatuto.
+----------------------------------------------------------------------------------------------------
+Function LSocio_Isento(nMat in number) Return varchar2 is
+  dtAnoNasc number;
+  nMatSocio number;
+  nTotReg number;
+  nAno number;
+  vCategoria SÓCIO.CATEGORIA_COD%type;
+  vTipoIsento varchar2(50);
+  vRetorno varchar2(50);
+  nLinha number;
+begin
+  nAno := TO_NUMBER(TO_CHAR(SYSDATE,'YYYY')) - 70;
+  SELECT MAT, TO_NUMBER(TO_CHAR(DATA_NASCIMENTO,'YYYY')), CATEGORIA_COD INTO nMatSocio, dtAnoNasc, vCategoria  FROM SBDB.SÓCIO  WHERE MAT = nMat;
+  -- Verifica se o sócio possui isenção temporária na tabela SÓCIO_ISENÇÃO
+  begin
+    select count(ise.sócio_mat), ise.tipo into nTotReg, vTipoIsento
+    from (select sócio_mat,rownum as linha,tipo
+          from sbdb.sócio_isenção
+          where sócio_mat = nMat AND
+                (Data_Fim >= SYSDATE OR
+                DATA_FIM IS NULL)) ise,
+  	 (select sócio_mat,max(linha) as linha
+          from (select sócio_mat, rownum as linha
+                from sbdb.sócio_isenção
+                where sócio_mat = nmat AND
+                      (Data_Fim >= SYSDATE OR
+                       DATA_FIM IS NULL))
+                       group by sócio_mat) isf
+    where ise.linha = isf.linha
+    group by ise.tipo;
+  exception
+    when NO_DATA_FOUND then
+      nTotReg := 0;
+  end;
+  vRetorno := null;
+  -- Verifica os critérios de isenção.
+  if vCategoria = 'BENEMÉRITO' or vCategoria = 'HONORÁRIO' then
+    vRetorno := 'ISENTO - CATEGORIA';
+  elsif (dtAnoNasc <= nAno) then
+    vRetorno := 'ISENTO';
+  elsif nTotReg > 0 then
+    vRetorno := 'ISENTO - ' || vTipoIsento;
+  end if;
+  Return vRetorno;
+exception
+  when others then
+  raise_application_error(-20000, 'Erro em LSocio_Isento - ' || SQLERRM);
+end LSocio_Isento;
+--------------------------------------------------------------------------------------------------------------
+-- Procedimento para atualizar a situção de LICENCIADO para QUITE após data final de periodo
+--------------------------------------------------------------------------------------------------------------
+PROCEDURE LAtualiza_Licenciados IS
+  CURSOR ALL_HIST_LICEN_INICIO IS
+    SELECT SOCIO_MAT,TO_CHAR(DATA_INICIO,'DD/MM/YYYY') FROM SBDB.HISTORICO_LICENCIADO
+    WHERE SYSDATE >= DATA_INICIO AND SYSDATE <= DATA_FINAL
+    ORDER BY DATA_INICIO;
+  CURSOR ALL_HIST_LICEN_FINAL IS
+    SELECT SOCIO_MAT,TO_CHAR(DATA_FINAL,'DD/MM/YYYY')
+    FROM SBDB.HISTORICO_LICENCIADO
+    WHERE (SYSDATE < DATA_INICIO OR SYSDATE > DATA_FINAL) AND (SOCIO_MAT NOT IN ( SELECT SOCIO_MAT FROM SBDB.HISTORICO_LICENCIADO WHERE SYSDATE <= DATA_FINAL))
+    ORDER BY DATA_FINAL desc;
+  TYPE t_SOCIO_MAT IS TABLE OF HISTORICO_LICENCIADO.SOCIO_MAT%TYPE INDEX BY BINARY_INTEGER;
+  TYPE t_DATA_INICIO IS TABLE OF HISTORICO_LICENCIADO.DATA_INICIO%TYPE INDEX BY BINARY_INTEGER;
+  TYPE t_DATA_FINAL IS TABLE OF HISTORICO_LICENCIADO.DATA_FINAL%TYPE INDEX BY BINARY_INTEGER;
+  v_SOCIO_MAT t_SOCIO_MAT;
+  v_DATA_INICIO t_DATA_INICIO;
+  v_DATA_FINAL t_DATA_FINAL;
+  v_INDICE BINARY_INTEGER;
+BEGIN
+  OPEN ALL_HIST_LICEN_INICIO;
+  FETCH ALL_HIST_LICEN_INICIO BULK COLLECT  INTO v_SOCIO_MAT, v_DATA_INICIO;
+  CLOSE ALL_HIST_LICEN_INICIO;
+  FORALL v_INDICE IN v_SOCIO_MAT.FIRST..v_SOCIO_MAT.LAST
+    UPDATE SBDB.SÓCIO SET OBRIG_STATUS_COD = 'LICENCIADO'
+    WHERE (SBDB.SÓCIO.MAT = v_SOCIO_MAT(v_INDICE)) AND
+          (SBDB.SÓCIO.OBRIG_STATUS_COD = 'QUITE' OR SBDB.SÓCIO.OBRIG_STATUS_COD = 'QUITE - CO');
+  COMMIT;
+  OPEN ALL_HIST_LICEN_FINAL;
+  FETCH ALL_HIST_LICEN_FINAL BULK COLLECT
+    INTO v_SOCIO_MAT, v_DATA_FINAL;
+  CLOSE ALL_HIST_LICEN_FINAL;
+  FORALL v_INDICE IN v_SOCIO_MAT.FIRST..v_SOCIO_MAT.LAST
+    UPDATE SBDB.SÓCIO SET OBRIG_STATUS_COD = 'QUITE'
+    WHERE (SBDB.SÓCIO.MAT = v_SOCIO_MAT(v_INDICE)) AND
+          (SBDB.SÓCIO.OBRIG_STATUS_COD='LICENCIADO');
+  COMMIT;
+END LAtualiza_Licenciados;
+--------------------------------------------------------------------------------------------------------------
+-- Procedimento para atualizar a situção de PENALIZADO após data final de periodo
+--------------------------------------------------------------------------------------------------------------
+PROCEDURE LAtualiza_Penalizado IS
+ CURSOR ALL_HIST_PENAL IS
+   SELECT SOCIO_MAT,DATA_FINAL FROM SBDB.HISTORICO_PENALIZADO
+   WHERE DATA_FINAL > SYSDATE
+   ORDER BY DATA_FINAL desc;
+ TYPE t_SOCIO_MAT IS TABLE OF HISTORICO_PENALIZADO.SOCIO_MAT%TYPE INDEX BY BINARY_INTEGER;
+ TYPE t_DATA_FINAL IS TABLE OF HISTORICO_PENALIZADO.DATA_FINAL%TYPE INDEX BY BINARY_INTEGER;
+ v_SOCIO_MAT t_SOCIO_MAT;
+ v_DATA_FINAL t_DATA_FINAL;
+ v_INDICE BINARY_INTEGER;
+BEGIN
+  OPEN ALL_HIST_PENAL;
+  FETCH ALL_HIST_PENAL BULK COLLECT
+     INTO v_SOCIO_MAT,v_DATA_FINAL;
+  CLOSE ALL_HIST_PENAL;
+  FORALL v_INDICE IN v_SOCIO_MAT.FIRST..v_SOCIO_MAT.LAST
+     UPDATE SBDB.SÓCIO SET PENALIZADO = 'N'
+     WHERE (SYSDATE >= V_DATA_FINAL(v_INDICE)) AND
+           (SBDB.SÓCIO.MAT = v_SOCIO_MAT(v_INDICE)) AND
+           (SBDB.SÓCIO.PENALIZADO='S');
+  COMMIT;
+END LAtualiza_Penalizado;
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Função para colocar as primeiras letras em maiúsculo - Andre (06/01/2007) - Alterada pelo Luciano (13/02/2007)
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Function  LPrimLetraMaius(TEXTO in Varchar2) Return varchar2 IS
+  MAIUSC VARCHAR(2000) := ';AC;AL;AM;AP;BA;CE;DF;ES;GO;MA;MG;MS;MT;PA;PB;PE;PI;PR;RJ;RN;RO;RR;RS;SC;SE;SP;TO;IASERJ;HSE;UNIRIO;UERJ;UFRJ;UFF;UFSP;SBD;ABC;UFJF;INAMPS;SUS;UNICAMP;UFS;CEDER;UNOESTE;PUC;UFES;FMUSP;UFRGS;UFPR;FMJ;HUSC;UFP;HUT;CEDEM;HUCFF;EPM;HC;FFFCM;UNIFESP;EMC;';
+  MINUSC VARCHAR(2000) := ';DA;DE;DI;DO;DU;DAS;DES;DIS;DOS;DUS;NA;NAS;NO;NOS;EM;AOS;AO;A;O';
+  DELIM VARCHAR2(10) := ' -./()';
+  POS INTEGER;
+  POSF INTEGER;
+  POSD VARCHAR2(1);
+  CPOS INTEGER;
+  CPOSF INTEGER;
+  Z INTEGER;
+  RETORNO VARCHAR2(2000) := '';
+  PALAV VARCHAR2(300);
+  TEXTOI VARCHAR2(2000);
+BEGIN
+ TEXTOI := NLS_INITCAP(TEXTO);
+ POS := 1;
+ WHILE POS <= LENGTH(TEXTOI) LOOP
+  POSF := LENGTH(TEXTOI)+1;
+  POSD := '';
+  FOR Z IN 1..LENGTH(DELIM) LOOP
+   CPOS := INSTR(TEXTOI, SUBSTR(DELIM,Z,1), POS);
+   IF CPOS <> 0 THEN
+    IF CPOS < POSF THEN
+     POSF := CPOS;
+     POSD := SUBSTR(DELIM,Z,1);
+    END IF;
+   END IF;
+  END LOOP;
+  PALAV := SUBSTR(TEXTOI, POS, POSF-POS);
+  CPOS := INSTR(MAIUSC, ';' || UPPER(PALAV) || ';');
+  IF CPOS <> 0 THEN
+   CPOSF := INSTR(MAIUSC, ';', CPOS+1);
+   IF CPOSF = 0 THEN
+    RETURN '';
+   ELSE
+    PALAV := SUBSTR(MAIUSC, CPOS+1, CPOSF-CPOS-1);
+   END IF;
+  END IF;
+  CPOS := INSTR(MINUSC, ';' || UPPER(PALAV) || ';');
+  IF CPOS <> 0 THEN
+   CPOSF := INSTR(MINUSC, ';', CPOS+1);
+   IF CPOSF = 0 THEN
+    RETURN '';
+   ELSE
+    PALAV := LOWER(SUBSTR(MINUSC, CPOS+1, CPOSF-CPOS-1));
+   END IF;
+  END IF;
+  RETORNO := RETORNO || PALAV || POSD;
+  POS := POSF + 1;
+ END LOOP;
+ RETURN RETORNO;
+END;
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Função para validar o CPF - Andre (14/05/2007) - Alterada pelo Luciano (13/02/2007)
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Function LVal_CPF(CPF VARCHAR2) Return Varchar2 IS
+  cpf_c         number ;
+  tam           number(2);
+  tot1          number(4) := 0;
+  tot2          number(4) := 0;
+  multiplicador number(2) := 9;
+  digito        number(1) := 0;
+  resto1        number(2) := 0;
+  resto2        number(2) := 0;
+  dc1_cpf       number(1) := 0;
+  dc2_cpf       number(1) := 0;
+  digito_dig    char(2);
+  cpf_x         number;
+  tamanho       number(2);
+  dc_cpf        char(2);
+begin
+  cpf_c      := lpad(rtrim(ltrim(replace(CPF,'-',''))),11,'0');
+  tam        := length(substr(cpf_c,-2,2));
+  digito_dig := substr(cpf_c,-2,2);
+  cpf_x      := substr(lpad(to_char(cpf_c),11,'0'),1,9);
+  tamanho    := length(to_char(cpf_x));
+  if (CPF IS NOT NULL)  THEN
+    for i in reverse 1..tamanho loop
+      tot1 := tot1 + multiplicador * (substr(to_char(cpf_x),i,1));
+      multiplicador  := multiplicador - 1;
+    end loop;
+    resto1 := mod(tot1,11);
+    if resto1 = 10 then
+      dc1_cpf := 0;
+    else
+      dc1_cpf := resto1;
+    end if;
+    digito := dc1_cpf;
+    tot2    := tot2 + 9 * digito;
+    multiplicador := 8;
+    for i in reverse 1..tamanho loop
+      tot2 := tot2 + multiplicador * (substr(to_char(cpf_x),i,1));
+      multiplicador := multiplicador - 1;
+    end loop;
+    resto2 := mod(tot2,11);
+    if resto2 = 10 then
+      dc2_cpf := 0;
+    else
+      dc2_cpf := resto2;
+    end if;
+    dc_cpf := to_char(dc1_cpf) || to_char(dc2_cpf);
+    if dc_cpf = digito_dig then
+      return 'V';
+    else
+      return 'F';
+    end if;
+  else
+    return '';
+  end if;
+  exception
+    WHEN VALUE_ERROR THEN
+      return 'F';
+END LVal_CPF;
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- Função para colocar todas as  letras em maiúsculo e tirando o acento - Carlos Gomes (26/10/2007)
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Function  LMaiusculaSemAcento(CAMPO in Varchar2) Return varchar2 IS
+  vCampo Varchar2(100);
+BEGIN
+  vCampo := Campo;
+  Return UPPER(TRIM(TRANSLATE(vCampo,'ÁÉÍÓÚáéíóúÇçÀàÃãÕõÂâÊêÈèÔô','AEIOUaeiouCcAaAaOoAaEeEeOo')));
+END;
+FUNCTION LDif_Data (max_date STRING, min_date STRING) RETURN PLS_INTEGER IS
+BEGIN
+  RETURN TO_DATE(max_date) - TO_DATE(min_date);
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN NULL;
+END LDif_Data;
+FUNCTION DIA_UTIL(vData in date) RETURN string IS
+  vData_util date;
+  Cursor CurData is select dia||'/'||mes as Data_Feriado from sbdb.feriado order by dia,mes;
+BEGIN
+  vData_util := vData;
+  for Cur in CurData loop
+    if to_char(vData_util, 'd') = 1 or to_char(vData_util, 'd') = 7 then
+      vData_util := vData_util + 2;
+    end if;
+    if to_char(vData_util,'dd/mm') = cur.data_feriado then
+      vData_util := vData_util + 1;
+    end if;
+  end loop;
+  return to_char(vData_util,'dd/mm/yyyy');
+  Close CurData;
+END DIA_UTIL;
+----------------------------------------------------------------------------------------------------
+-- Procedimento para gerar a obrigação DESPESAS BIBLIOTECA
+----------------------------------------------------------------------------------------------------
+PROCEDURE LBiblio_Despesas(vANUIDADE IN VARCHAR2) IS
+  v_ANUIDADE VARCHAR2(4);
+  x_ANUIDADE VARCHAR2(4);
+  v_OBR_TIPO VARCHAR2(30);
+  v_EMISSAO VARCHAR2(1);
+  v_OBR_SEQ NUMBER(5);
+BEGIN
+  x_ANUIDADE := vANUIDADE;
+  v_ANUIDADE := '';
+  v_EMISSAO := '';
+  SELECT MAX(ANUIDADE) INTO v_ANUIDADE FROM SBDB.PARAMETRO_FINANCEIRO;
+  IF v_ANUIDADE = x_ANUIDADE THEN
+    SELECT EMISSAO_BOLETO INTO v_EMISSAO FROM SBDB.PARAMETRO_FINANCEIRO WHERE ANUIDADE = x_ANUIDADE;
+    if v_EMISSAO = 'S' THEN
+      raise_application_error(-20011, 'Não é mais permitido gerar as obrigações. Os boletos já foram gerados.' || SQLERRM);
+    end if;
+    DELETE FROM SBDB.OBRIGAÇÃO WHERE COMPETÊNCIA = TO_DATE('01/01/'||x_ANUIDADE,'DD/MM/YYYY')  AND OBRIG_TIPO='DESPESAS BIBLIOTECA';
+    FOR CUR IN (SELECT L.MAT,S.NOME,S.OBRIG_STATUS_COD AS STATUS, to_char(L.SALDO, '999D99') AS SALDO FROM
+               (SELECT MAT, SALDO FROM (SELECT P.MAT_ASSOCIADO AS MAT, SUM(P.DESPBIBLIO) - SUM(NVL(L.VALOR,0)) AS SALDO
+                FROM (select MAT_ASSOCIADO, COD, DECODE(QTDE_COPIAS,NULL,(CUSTO_SERVICO*QTDE_ATENDIDOS)+CUSTO_POSTAGEM,(CUSTO_SERVICO*QTDE_COPIAS)+CUSTO_POSTAGEM) AS DESPBIBLIO FROM BIBLIO_PEDIDO) P,
+               (SELECT COD_PEDIDO, VALOR FROM BIBLIO_LANCAMENTO WHERE valor > 0 ) L
+                WHERE P.COD = L.COD_PEDIDO(+) GROUP BY MAT_ASSOCIADO)  WHERE SALDO > 0 AND MAT IS NOT NULL ORDER BY MAT) L,
+                SÓCIO S WHERE S.MAT = L.MAT AND S.OBRIG_STATUS_COD NOT LIKE 'ISENTO%') LOOP
+      v_OBR_SEQ := NULL;
+      SELECT NVL(MAX(SEQ)+1,1) INTO v_OBR_SEQ FROM SBDB.OBRIGAÇÃO WHERE SÓCIO_MAT = CUR.MAT GROUP BY SÓCIO_MAT;
+      IF (v_OBR_SEQ IS NOT NULL) AND (v_OBR_TIPO IS NULL) THEN
+        INSERT INTO SBDB.OBRIGAÇÃO (SÓCIO_MAT, SEQ, OBRIG_TIPO, DATA_LANÇAMENTO,COMPETÊNCIA, VALOR, DATA_VENCIMENTO, OBRIG_STATUS_COD)
+                            VALUES (CUR.MAT,v_OBR_SEQ,'DESPESAS BIBLIOTECA',SYSDATE, TO_DATE('01/01/'||v_ANUIDADE,'DD/MM/YYYY'),CUR.SALDO,TO_DATE('30/04/'||v_ANUIDADE,'DD/MM/YYYY'),'EM ABERTO');
+        COMMIT;
+        FOR CRS IN (SELECT A.*,B.* FROM (select MAT_ASSOCIADO, COD, DECODE(QTDE_COPIAS,NULL,(CUSTO_SERVICO*QTDE_ATENDIDOS)+CUSTO_POSTAGEM,(CUSTO_SERVICO*QTDE_COPIAS)+CUSTO_POSTAGEM) AS DESPBIBLIO FROM SBDB.BIBLIO_PEDIDO WHERE MAT_ASSOCIADO = CUR.MAT ORDER BY MAT_ASSOCIADO,COD) A, (SELECT SÓCIO_MAT,NVL(MAX(SEQ),1) AS v_OBR_SEQ FROM SBDB.OBRIGAÇÃO GROUP BY SÓCIO_MAT) B WHERE B.SÓCIO_MAT = A.MAT_ASSOCIADO) LOOP
+          UPDATE SBDB.BIBLIO_PEDIDO SET OBRIG_SEQ = CRS.V_OBR_SEQ WHERE MAT_ASSOCIADO=CRS.MAT_ASSOCIADO AND COD=CRS.COD;
+          COMMIT;
+        END LOOP;
+        UPDATE SBDB.PARAMETRO_FINANCEIRO SET EMISSAO_BOLETO = 'S' WHERE ANUIDADE = x_ANUIDADE;
+      END IF;
+    END LOOP;
+   else
+      raise_application_error(-20010, 'Anuidade Inválida! ' || SQLERRM);
+   END IF;
+END LBiblio_Despesas;
+----------------------------------------------------------------------------------------------------
+-- Procedimento para Validar e-mail
+----------------------------------------------------------------------------------------------------
+Function LValidaEmail(email in varchar2) return varchar2 as
+  ValEmail Varchar2(500);
+begin
+	select case when nvl(trim(email),null) is not null then
+        nvl2 (REGEXP_SUBSTR (email, '^([a-z0-9._-]+)@([a-z0-9_-]+(\.[a-z0-9_-]+)+)$'),'Válido', '> E-mail Inválido: ('||email||')')
+      else 'Válido'
+ end into ValEmail from dual;
+ Return ValEmail;
+end;
+----------------------------------------------------------------------------------------------------
+-- Procedimento para enviar email de log
+----------------------------------------------------------------------------------------------------
+PROCEDURE LEnviaLog IS
+  Texto CLOB;
+  Texto1 CLOB;
+  TestePKT  Varchar(100);
+  HOST_INFO VARCHAR2(4000);
+  CurTrg INTEGER;
+  CurJob INTEGER;
+  CurTab INTEGER;
+  CurOSC INTEGER;
+  CurCat INTEGER;
+  CurReg INTEGER;
+  CurAtu INTEGER;
+  CurVaz INTEGER;
+  CurDel INTEGER;
+  CurCon INTEGER;
+  Cursor LTRIGGER IS SELECT TRIGGER_NAME FROM "SYS"."ALL_TRIGGERS" WHERE STATUS = 'DISABLED' AND OWNER = 'SBDB';
+  Cursor LJOB IS SELECT JOB || ' - ' || TO_CHAR(LAST_DATE,'DD/MM/YYYY') || ' - ' || WHAT as vJob FROM "SYS"."USER_JOBS" WHERE BROKEN = 'S' ORDER BY JOB;
+  Cursor LTAB IS SELECT TABLE_NAME || ' - ' || TO_CHAR(NUM_ROWS) AS vTab FROM "SYS"."ALL_ALL_TABLES" WHERE OWNER = 'SBDB' AND NUM_ROWS > 700000 ORDER BY TABLE_NAME;
+  Cursor LSOC IS SELECT MAT, OBRIG_STATUS_COD, CATEGORIA_COD, CPF, CRM, CRM_ESTADO, DATA_CADASTRO, REGIONAL_COD FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 ORDER BY MAT;
+  Cursor LOSC IS SELECT OBRIG_STATUS_COD, COUNT(OBRIG_STATUS_COD) AS TOTAL FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 GROUP BY OBRIG_STATUS_COD,EXCLUÍDO ORDER BY OBRIG_STATUS_COD;
+  Cursor LCAT IS SELECT CATEGORIA_COD, COUNT(CATEGORIA_COD) AS TOTAL FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 GROUP BY CATEGORIA_COD, EXCLUÍDO ORDER BY CATEGORIA_COD;
+  Cursor LREG IS SELECT REGIONAL_COD, COUNT(REGIONAL_COD) AS TOTAL FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 GROUP BY REGIONAL_COD, EXCLUÍDO ORDER BY REGIONAL_COD;
+  Cursor LATU IS SELECT MAT || ' - ' || NOME || ' - ' || CATEGORIA_COD || ' - ' || OBRIG_STATUS_COD || ' - ' || REGIONAL_COD AS SOCIO, SYS_USUARIO_ATUALIZA AS USUARIO FROM SBDB.SÓCIO WHERE TO_CHAR(SYS_MOMENTO_ATUALIZA,'DD/MM/YYYY') = TO_CHAR(SYSDATE,'DD/MM/YYYY') ORDER BY MAT;
+  Cursor LVAZ IS SELECT * FROM (SELECT COUNT(NVL(CATEGORIA_COD,0)) AS CATEGORIA FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 AND CATEGORIA_COD IS NULL OR CATEGORIA_COD = '') A,
+                               (SELECT COUNT(NVL(CPF,0)) AS CPF FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 AND CPF IS NULL OR CPF = '') B,
+                               (SELECT COUNT(NVL(CRM,0)) AS CRM FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 AND CRM IS NULL OR CRM = '') C,
+                               (SELECT COUNT(DATA_CADASTRO) AS DATA_CADASTRO FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 AND DATA_CADASTRO IS NULL) D,
+                               (SELECT COUNT(NVL(REGIONAL_COD,0)) AS REGIONAL_COD FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 AND REGIONAL_COD IS NULL OR REGIONAL_COD = '') E,
+                               (SELECT COUNT(NVL(SEXO,0)) AS SEXO FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 AND SEXO IS NULL OR SEXO = '') F,
+                               (SELECT COUNT(DATA_NASCIMENTO) AS DATA_NASCIMENTO FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 AND DATA_NASCIMENTO IS NULL) G;
+  Cursor LDEL IS SELECT REGIONAL_COD as DIRETORIA, COUNT(MAT) AS TOT_QI, COUNT(MAT)/50 AS "TOT_QI/50", trunc(COUNT(MAT)/50) as Permitido FROM SBDB.SÓCIO WHERE EXCLUÍDO = 0 AND (OBRIG_STATUS_COD LIKE 'QUITE%' OR OBRIG_STATUS_COD LIKE 'ISENTO%') group by regional_cod;
+  Cursor LCON IS SELECT TO_CHAR(LOGON_TIME,'DD/MM/YYYY HH:MI:SS') AS DATA, USERNAME, STATUS, PROGRAM from v$Session where program = 'SBD_CIAD.exe' ORDER BY USERNAME,LOGON_TIME;
+BEGIN
+--  SELECT nvl(TO_CHAR(LOGON_TIME,'DD/MM/YYYY HH:MI:SS'),'0'), nvl(USERNAME,'0'), nvl(STATUS,'0'), nvl(PROGRAM,'0') INTO vDATA, vUSERNAME, vSTATUS, vPROGRAM from v$Session where program = 'SBD_CIAD.exe';
+  Texto1 := '<html><body>';
+  for CurTrg in LTRIGGER loop
+    Texto1 := Texto1 || 'Trigger Parada: <b>' || CurTrg.TRIGGER_NAME || '</b> <br />';
+  end LOOP;
+  Texto1 := Texto1 || ' <br />';
+  for CurJob in LJOB loop
+    Texto1 := Texto1 || 'Job Parado: <b>' || CurJob.vJob || '</b> <br />';
+  end LOOP;
+  Texto1 := Texto1 || ' <br />   ';
+  for CurTab in LTAB loop
+    Texto1 := Texto1 || 'Tabela com Mais de 700000 Linhas: <b>' || CurTab.vTab || '</b> <br />';
+  end LOOP;
+  Texto1 := Texto1 || ' <br /> <b><h1>- Os dados abaixo não consideram os associados EXCLUÍDOS!</h1></b> ';
+  for CurOSC in LOSC loop
+    Texto1 := Texto1 || 'Situação: '|| CurOSC.OBRIG_STATUS_COD || ': <b>' || TO_CHAR(CurOSC.TOTAL) ||' </b> <br />';
+  end LOOP;
+  Texto1 := Texto1 || ' <br />   ';
+  for CurCat in LCAT loop
+    Texto1 := Texto1 || 'Categoria: '|| CurCat.CATEGORIA_COD || ': <b>' || TO_CHAR(CurCat.TOTAL) ||' </b> <br />';
+  end LOOP;
+  Texto1 := Texto1 || ' <br />   ';
+  for CurReg in LREG loop
+    Texto1 := Texto1 || 'Regional: '|| CurReg.REGIONAL_COD || ': <b>' || TO_CHAR(CurReg.TOTAL) ||' </b> <br />';
+  end LOOP;
+  Texto1 := Texto1 || ' <br />   ';
+  Texto1 := Texto1 || ' <Table border=3 style="width:100%"; font-family :Arial;">';
+  Texto1 := Texto1 || ' <TR><td bgcolor="99CCFF" colspan = "7"><b>Acompanhamento de Atualizações:</b></TD></TR>';
+  Texto1 := Texto1 || '<tr> <td colspan = "6"> Atualizado Hoje </td> <td > Por </td> </tr>';
+  for CurAtu in LATU loop
+    Texto1 := Texto1 || '<tr> <td colspan = "6">' || CurAtu.SOCIO || '</td> <td>' || CurAtu.USUARIO|| '</td> </tr>';
+  end LOOP;
+  Texto1 := Texto1 || ' <TR><td bgcolor="99CCFF" colspan = "7"><b>Acompanhamento de Campos Vazios:</b></TD></TR>';
+  Texto1 := Texto1 || '<tr> <td > Categoria </td> <td> CPF </td> <td> CRM </td> <td> Data Cadastro </td> <td> Regional </td> <td> Sexo </td> <td> Data Nascimento </td> </tr>';
+  for CurVaz in LVAZ loop
+    Texto1 := Texto1 || '<tr> <td>' || CurVaz.CATEGORIA || '</td> <td>' || CurVaz.CPF || '</td> <td>' || CurVaz.CRM || '</td> <td>' || CurVaz.DATA_CADASTRO  || '</td> <td>' ||  CurVaz.REGIONAL_COD || '</td> <td>' || CurVaz.SEXO  || '</td> <td>' ||  CurVaz.DATA_NASCIMENTO || '</td> </tr>';
+  end LOOP;
+  Texto1 := Texto1 || ' <TR><td bgcolor="99CCFF" colspan = "7"><b>Acompanhamento de Delegados Por Regional:</b></TD></TR>';
+  Texto1 := Texto1 || '<tr> <td > Diretoria </td> <td> Quite e Isento </td> <td> Quite e Isento Div 50 </td> <td> Total Delegados </td> <td> Vazio </td> <td> Vazio </td> <td> Vazio </td> </tr>';
+  for CurDel in LDEL loop
+    Texto1 := Texto1 || '<tr> <td>' || CurDel.DIRETORIA || '</td> <td>' || CurDel.TOT_QI || '</td> <td>' || CurDel."TOT_QI/50"  || '</td> <td>' || CurDel.Permitido  || '</td> <td>' ||  'Vazio' || '</td> <td>' || 'Vazio'  || '</td> <td>' ||  'Vazio' || '</td> </tr>';
+  end LOOP;
+  Texto1 := Texto1 || ' <TR><td bgcolor="99CCFF" colspan = "7"><b>Acompanhamento dos Pacotes:</b></TD></TR>';
+  begin
+    TestePKT := EMCD.VALIDAFASE(1,'0005');
+    Texto1 := Texto1 || ' <TR><td colspan = "7">O Pacote EMCD Está Rodando Normalmente!</TD></TR>';
+  exception
+    when others then
+      Texto1 := Texto1 || ' <TR><td style = "color: Red;" colspan = "7">O Pacote EMCD Parou! Mensagem de Erro: ' || SQLERRM || '</TD></TR>';
+  end;
+  begin
+    TestePKT := LB.lextenso(10,'R$');
+    Texto1 := Texto1 || ' <TR><td colspan = "7">O Pacote LB Está Rodando Normalmente!</TD></TR>';
+  exception
+    when others then
+      Texto1 := Texto1 || ' <TR><td style = "color: Red;" colspan = "7">O Pacote LB Parou! Mensagem de Erro: ' || SQLERRM || '</TD></TR>';
+  end;
+  begin
+    TestePKT := LSBD.DIA_UTIL('02/03/1971');
+    Texto1 := Texto1 || ' <TR><td colspan = "7">O Pacote LSBD Está Rodando Normalmente!</TD></TR>';
+  exception
+   when others then
+      Texto1 := Texto1 || ' <TR><td style = "color: Red;" colspan = "7">O Pacote LSBD Parou! Mensagem de Erro: ' || SQLERRM || '</TD></TR>';
+  end;
+  begin
+    RSBD.AtualizaDelegados;
+    Texto1 := Texto1 || ' <TR><td colspan = "7">O Pacote RSBD Está Rodando Normalmente!</TD></TR>';
+  exception
+    when others then
+      Texto1 := Texto1 || ' <TR><td style = "color: Red;" colspan = "7">O Pacote RSBD Parou! Mensagem de Erro: ' || SQLERRM || '</TD></TR>';
+  end;
+  begin
+    TestePKT := SITE.GERAR_SENHA ;
+    Texto1 := Texto1 || ' <TR><td colspan = "7">O Pacote SITE Está Rodando Normalmente!</TD></TR>';
+  exception
+    when others then
+      Texto1 := Texto1 || ' <TR><td style = "color: Red;" colspan = "7">O Pacote SITE Parou! Mensagem de Erro: ' || SQLERRM || '</TD></TR>';
+  end;
+  Texto1 := Texto1 || ' <TR><td bgcolor="99CCFF" colspan = "7"><b>Acompanhamento de Conexão:</b></TD></TR>';
+  for CurCon in LCON loop
+    Texto1 := Texto1 || '<tr> <td>' || CurCon.DATA || '</td> <td>' || CurCon.USERNAME || '</td> <td>' || CurCon.STATUS  || '</td> <td>' ||  CurCon.PROGRAM  || '</td> <td>' ||  'Vazio' || '</td> <td>' || 'Vazio'  || '</td> <td>' ||  'Vazio' || '</td> </tr> ';
+  end LOOP;
+  TEXTO1 := TEXTO1 || ' </Table>' || ' </body> ' || ' </html> ' || ' X' ;
+  select UTL_INADDR.GET_HOST_NAME || ' - [' || UTL_INADDR.GET_HOST_ADDRESS || ']' INTO HOST_INFO from DUAL;
+  SENDMAIL('contato@xxxxxxx.org.br','web@xxxxxxx.com.br','SBD - Oracle SBDB - Log SBD da Base de dados do HOST: '|| HOST_INFO,TEXTO1);
+  EXCEPTION
+    when OTHERS then
+      raise_application_error(-20000, 'Erro em LEnviaLog - ' || SQLERRM);
+END;
+
+Procedure LAtualiza_Geral is
+ret clob;
+HOST_INFO VARCHAR2(4000);
+begin
+  ret := '<html><body><h1>ACOMPANHAMENTO EXEC JOB SBDB CIAD</h1>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'LAtualiza_Obrig_Status';
+  ret := ret || '<ul>';
+  ret := ret || '<li>momento: ' || to_char(sysdate,'YYYY-MM-DD HH24:MI:SS') || '</li>';
+  begin
+  NULL;
+	-- LAtualiza_Obrig_Status;
+  exception
+     when others then
+        ret := ret || '<li>erro: ' || SQLERRM || '</li>';
+  end;
+  ret := ret || '</ul></p>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'LAtualiza_Socio_Status';
+  ret := ret || '<ul>';
+  ret := ret || '<li>momento: ' || to_char(sysdate,'YYYY-MM-DD HH24:MI:SS') || '</li>';
+  begin
+  	LAtualiza_Socio_Status;
+  exception
+     when others then
+        ret := ret || '<li>erro: ' || SQLERRM || '</li>';
+  end;
+  ret := ret || '</ul></p>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'LAltera_Categoria';
+  ret := ret || '<ul>';
+  ret := ret || '<li>momento: ' || to_char(sysdate,'YYYY-MM-DD HH24:MI:SS') || '</li>';
+  begin
+  NULL;
+	LAltera_Categoria;
+  exception
+     when others then
+        ret := ret || '<li>erro: ' || SQLERRM || '</li>';
+  end;
+  ret := ret || '</ul></p>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'RSBD.AtualizaDelegados';
+  ret := ret || '<ul>';
+  ret := ret || '<li>momento: ' || to_char(sysdate,'YYYY-MM-DD HH24:MI:SS') || '</li>';
+  begin
+	RSBD.AtualizaDelegados;
+  exception
+     when others then
+        ret := ret || '<li>erro: ' || SQLERRM || '</li>';
+  end;
+  ret := ret || '</ul></p>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'LAtualiza_Licenciados';
+  ret := ret || '<ul>';
+  ret := ret || '<li>momento: ' || to_char(sysdate,'YYYY-MM-DD HH24:MI:SS') || '</li>';
+  begin
+	LAtualiza_Licenciados;
+  exception
+     when others then
+        ret := ret || '<li>erro: ' || SQLERRM || '</li>';
+  end;
+  ret := ret || '</ul></p>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'LAtualiza_Penalizado';
+  ret := ret || '<ul>';
+  ret := ret || '<li>momento: ' || to_char(sysdate,'YYYY-MM-DD HH24:MI:SS') || '</li>';
+  begin
+	LAtualiza_Penalizado;
+  exception
+     when others then
+        ret := ret || '<li>erro: ' || SQLERRM || '</li>';
+  end;
+  ret := ret || '</ul></p>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'LCompObjetos';
+  ret := ret || '<ul>';
+  ret := ret || '<li>momento: ' || to_char(sysdate,'YYYY-MM-DD HH24:MI:SS') || '</li>';
+  begin
+	LB.LCompObjetos;
+  exception
+     when others then
+        ret := ret || '<li>erro: ' || SQLERRM || '</li>';
+  end;
+  ret := ret || '</ul></p>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'LEnviaLog';
+  ret := ret || '<ul>';
+  ret := ret || '<li>momento: ' || to_char(sysdate,'YYYY-MM-DD HH24:MI:SS') || '</li>';
+  begin
+	LEnviaLog;
+  exception
+     when others then
+        ret := ret || '<li>erro: ' || SQLERRM || '</li>';
+  end;
+  RET := RET || '</ul></p>';
+--
+--
+--
+  RET := RET || '<p>';
+  ret := ret || 'Objetos Modificados';
+  RET := RET || '<ul>';
+  ret := ret || SBDB.LSQLTOHTML('select OWNER, user, sysdate, OBJECT_NAME, OBJECT_TYPE, CREATED ,LAST_DDL_TIME from ALL_OBJECTS where OWNER IN (''ATLAS'',''ARCD'',''SBDB'',''PALESTRA'',''SURGICAL'',''ESEND'',''SEPON'',''ANAIS2'')  AND TO_CHAR(LAST_DDL_TIME,''YYYY-MM-DD'') = TO_CHAR(SYSDATE-1,''YYYY-MM-DD'')',7);
+  RET := RET || '</ul></p>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'Objetos inválidos';
+  ret := ret || '<ul>';
+  ret := ret || SBDB.LSQLTOHTML('SELECT OWNER, OBJECT_NAME, OBJECT_TYPE, STATUS FROM ALL_OBJECTS WHERE STATUS = ''INVALID'' AND OWNER<>''PUBLIC''  ORDER BY OWNER, LAST_DDL_TIME',4);
+  ret := ret || '</ul></p>';
+--
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'Índices Inválidos';
+  ret := ret || '<ul>';
+  ret := ret || SBDB.LSQLTOHTML('SELECT OWNER, INDEX_NAME, STATUS FROM ALL_INDEXES WHERE STATUS = ''UNUSABLE''  ORDER BY OWNER, INDEX_NAME',3);
+  ret := ret || '</ul></p>';
+--
+--
+  ret := ret || '<p>';
+  ret := ret || 'Estado de Jobs';
+  ret := ret || '<ul>';
+  ret := ret || SBDB.LSQLTOHTML('SELECT JOB,''broken:'' || BROKEN,''failures:'' || FAILURES,WHAT FROM DBA_JOBS ORDER BY FAILURES DESC',4);
+  ret := ret || '</ul></p>';
+--
+  ret := ret || '</body></html>';
+  select UTL_INADDR.GET_HOST_NAME || ' - [' || UTL_INADDR.GET_HOST_ADDRESS || ']' INTO HOST_INFO from DUAL;
+  SENDMAIL('WEB@xxxxxxx.org.br','web@xxxxxxx.com.br','SBD - Oracle SBDB - Acompanhamento de Job Atualiza Geral do HOST: '|| HOST_INFO,ret);
+end;
+
+end LSBD;

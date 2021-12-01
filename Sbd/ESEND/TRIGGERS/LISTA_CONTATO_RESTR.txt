@@ -1,0 +1,33 @@
+CREATE OR REPLACE TRIGGER LISTA_CONTATO_RESTR BEFORE
+   INSERT OR
+   UPDATE ON LISTA_CONTATO FOR EACH ROW DECLARE TOT NUMBER;
+  
+  VLISTASEQ   INTEGER;
+  VCONTATOSEQ INTEGER;
+  VEMAIL CLOB;
+  BEGIN
+    TOT                :=0;
+    VLISTASEQ          := :NEW.LISTA_SEQ;
+    VEMAIL             := :NEW.EMAIL;
+    VCONTATOSEQ        := :NEW.CONTATO_SEQ;
+    IF NOT VCONTATOSEQ IS NULL THEN
+       SELECT COUNT(*)
+         INTO TOT
+         FROM ESEND.LISTA_CONTATO
+        WHERE LISTA_SEQ=VLISTASEQ
+      AND CONTATO_SEQ  =VCONTATOSEQ;
+      IF TOT           > 0 THEN
+        RAISE_APPLICATION_ERROR(-20000,'Contato ' || VCONTATOSEQ || ' já existe nesta lista');
+      END IF;
+    END IF;
+    IF DBMS_LOB.GETLENGTH(:NEW.EMAIL)<>0 THEN
+       SELECT COUNT(*)
+         INTO TOT
+         FROM ESEND.LISTA_CONTATO
+        WHERE LISTA_SEQ                     =VLISTASEQ
+      AND DBMS_LOB.COMPARE(EMAIL,:NEW.EMAIL)=0;
+      IF TOT                                >0 THEN
+        RAISE_APPLICATION_ERROR(-20000,'Email ' || VEMAIL || ' já existe nesta lista');
+      END IF;
+    END IF;
+  END;

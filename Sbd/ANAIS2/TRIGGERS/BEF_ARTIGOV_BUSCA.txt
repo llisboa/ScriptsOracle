@@ -1,0 +1,48 @@
+CREATE OR REPLACE TRIGGER ANAIS2.BEF_ARTIGOV_BUSCA BEFORE
+   UPDATE OR
+   INSERT ON ANAIS2.ARTIGOV FOR EACH ROW DECLARE TOT_DEL INTEGER;
+  BEGIN
+    IF INSERTING OR UPDATING
+      (
+        'TITULO'
+      )
+      OR UPDATING
+      (
+        'TITULO_I'
+      )
+      OR UPDATING
+      (
+        'TITULO_E'
+      )
+      OR UPDATING
+      (
+        'RESUMO'
+      )
+      OR UPDATING
+      (
+        'RESUMO_I'
+      )
+      OR UPDATING
+      (
+        'RESUMO_E'
+      )
+      OR UPDATING
+      (
+        'CONTEUDO'
+      )
+      OR UPDATING
+      (
+        'CONTEUDO_I'
+      )
+      OR UPDATING
+      (
+        'CONTEUDO_E'
+      )
+      THEN
+      :NEW.ARTIGO_DECODE := HTMLDECODE
+      (
+        :NEW.TITULO || '|' || :NEW.TITULO_I || '|' || :NEW.TITULO_E || '|' || :NEW.RESUMO || '|' || :NEW.RESUMO_I || '|' || :NEW.RESUMO_E || '|' || :NEW.CONTEUDO || '|' || :NEW.CONTEUDO_I || '|' || :NEW.CONTEUDO_E
+      )
+      ;
+    END IF;
+  END;

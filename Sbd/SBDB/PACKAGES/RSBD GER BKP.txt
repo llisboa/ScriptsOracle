@@ -1,0 +1,136 @@
+CREATE OR REPLACE PACKAGE rsbd as
+ Procedure AtualizaDelegados;
+ Procedure TransfereMembros(Orgao in Varchar,Remanegado in varchar,NovoPosto in Varchar,Gestao in Date,qtRemanejado in number,Promover in boolean);
+end;
+/
+
+CREATE OR REPLACE PACKAGE BODY rsbd is
+-----------------------------------------------------------------------------------------------------------------
+--Gerencia a Transferancia de postos entre delegados e delegados suplenets
+-----------------------------------------------------------------------------------------------------------------
+Procedure AtualizaDelegados is
+  nDivisor number;
+  nSocio number;
+  dGestao Date;
+  nRemanejado number;
+begin
+
+  begin
+    Select divisor into nDivisor from sbdb.cargo where cargo = 'DELEGADOS';
+  exception
+      when no_data_found then
+            nDivisor := 1;
+  end;
+
+  FOR cQtSocios in (SELECT 'DIRETORIA ' || REGIONAL_COD as DIRETORIA, TRUNC (COUNT (MAT) / nDivisor) as Permitido  FROM SBDB.SÓCIO  WHERE EXCLUÍDO = 0 AND (OBRIG_STATUS_COD LIKE 'QUITE%' OR OBRIG_STATUS_COD LIKE 'ISENTO%') group by regional_cod order by REGIONAL_COD)  LOOP
+    BEGIN
+
+      begin
+        select Nvl(COUNT (SÓCIO_MAT),0), max(ÓRGÃO_GESTÃO_INI) into nSocio, dGestao from sbdb.órgão_membro where órgão_nome = cQtSocios.DIRETORIA AND ÓRGÃO_CARGO = 'DELEGADOS' AND ÓRGÃO_GESTÃO_INI = (SELECT MAX (ÓRGÃO_GESTÃO_INI) from sbdb.órgão_membro where órgão_nome = cQtSocios.DIRETORIA ) GROUP BY ÓRGÃO_NOME, ÓRGÃO_GESTÃO_INI;
+      exception
+        when NO_DATA_FOUND then
+          nSocio := 0;
+          SELECT MAX (ÓRGÃO_GESTÃO_INI) into dGestao from sbdb.órgão_membro where órgão_nome = cQtSocios.DIRETORIA;
+      end;
+
+      nRemanejado := cQtSocios.Permitido - nSocio;
+
+      --Se nRemanejado for:
+        --Maior que zero então os Delegados Suplentes serão remanejados para Delegados
+        --Menor que zero então os Delegados serão remanejados para Delegados  Suplentes
+        --Igual a zero nada acontece
+
+      if nRemanejado > 0 then
+        TransfereMembros (cQtSocios.DIRETORIA, 'DELEGADOS SUPLENTES', 'DELEGADOS', dGestao, nRemanejado, TRUE) ;
+      elsif nRemanejado < 0 then
+        TransfereMembros (cQtSocios.DIRETORIA, 'DELEGADOS', 'DELEGADOS SUPLENTES', dGestao, ABS(nRemanejado), FALSE) ;
+      end if;
+
+    END;
+
+  END LOOP;
+
+end AtualizaDelegados;
+
+----------------------------------------------------------------------------------------------------------------------
+-- Faz a Transferencia de menbros entre os ponstos enformados
+----------------------------------------------------------------------------------------------------------------------
+Procedure TransfereMembros (Orgao in Varchar, Remanegado in varchar, NovoPosto in Varchar, Gestao in Date, qtRemanejado in number, Promover  in Boolean)  is
+  EFalTaPosto EXCEPTION;
+  PRAGMA EXCEPTION_INIT (EFalTaPosto, - 2291) ;
+  cMembrosID integer;
+  strsql     varchar (500) ;
+  nOrdem órgão_membro.ordem%type;
+  nMat órgão_membro.sócio_mat%type;
+  nResult   integer;
+  nLoop     integer;
+  nLoopA     integer;
+  nLoopB     integer;
+  nLoopC     integer;
+  NovaOrdem nUMBER (3) ;
+  iPosto    varchar (50) ;
+  nDif     integer;
+begin
+
+  select nvl(max (ORDEM),0) into NovaOrdem from sbdb.órgão_membro where órgão_nome = orgao AND ÓRGÃO_CARGO = NovoPosto AND ÓRGÃO_GESTÃO_INI = gestao;
+
+  IF Promover THEN
+    nLoopA := 1;
+    for Cur_A in (select DISTINCT ORDEM, SÓCIO_MAT,ÓRGÃO_CARGO,ÓRGÃO_GESTÃO_INI from sbdb.órgão_membro where órgão_nome = Orgao AND ÓRGÃO_CARGO = Remanegado AND ÓRGÃO_GESTÃO_INI = Gestao GROUP BY ORDEM, SÓCIO_MAT,ÓRGÃO_CARGO,ÓRGÃO_GESTÃO_INI ORDER BY ORDEM) Loop
+      NovaOrdem := NovaOrdem + 1;
+      UPDATE SBDB.ÓRGÃO_MEMBRO SET ÓRGÃO_CARGO = NovoPosto, ORDEM = NovaOrdem, sys_status = 'X'  where sócio_mat = Cur_A.SÓCIO_MAT AND Órgão_Cargo = Cur_A.ÓRGÃO_CARGO AND ÓRGÃO_GESTÃO_INI = Cur_A.ÓRGÃO_GESTÃO_INI;
+      if nLoopA >= qtRemanejado then
+        exit;
+      end if;
+      nLoopA := nLoopA + 1;
+    end loop;
+  ELSE
+    nLoopB := 1;
+
+    for Cur_B in (select DISTINCT ORDEM, SÓCIO_MAT,ÓRGÃO_CARGO,ÓRGÃO_GESTÃO_INI from sbdb.órgão_membro where órgão_nome = Orgao AND ÓRGÃO_CARGO = NovoPosto AND ÓRGÃO_GESTÃO_INI = Gestao GROUP BY ORDEM, SÓCIO_MAT,ÓRGÃO_CARGO,ÓRGÃO_GESTÃO_INI ORDER BY ORDEM) Loop
+      UPDATE SBDB.ÓRGÃO_MEMBRO SET ORDEM = ORDEM + qtRemanejado, sys_status = 'X'  where sócio_mat = Cur_B.SÓCIO_MAT AND ordem = nLoopB and Órgão_Cargo = Cur_B.ÓRGÃO_CARGO AND ÓRGÃO_GESTÃO_INI = Cur_B.ÓRGÃO_GESTÃO_INI;
+      nLoopB := nLoopB + 1;
+    end loop;
+
+    COMMIT;
+
+    nLoopC := 1;
+
+    for Cur_C in (select DISTINCT ORDEM, SÓCIO_MAT, ÓRGÃO_CARGO, ÓRGÃO_GESTÃO_INI from sbdb.órgão_membro where órgão_nome = Orgao AND ÓRGÃO_CARGO = Remanegado AND ÓRGÃO_GESTÃO_INI = Gestao GROUP BY ORDEM, SÓCIO_MAT,ÓRGÃO_CARGO,ÓRGÃO_GESTÃO_INI ORDER BY ORDEM DESC) Loop
+      UPDATE SBDB.ÓRGÃO_MEMBRO SET ÓRGÃO_CARGO = NovoPosto, ORDEM = nLoopC, sys_status = 'X'  where sócio_mat = Cur_C.SÓCIO_MAT AND Órgão_Cargo = Cur_C.ÓRGÃO_CARGO AND ÓRGÃO_GESTÃO_INI = Cur_C.ÓRGÃO_GESTÃO_INI;
+      if nLoopC >= qtRemanejado then
+        exit;
+      end if;
+      nLoopC := nLoopC + 1;
+    end loop;
+
+  END IF;
+
+  COMMIT;
+
+  if promover then
+    iposto := Remanegado;
+  else
+    iposto := NovoPosto;
+  end if;
+
+  nloop   := 1;
+
+  for Cur_D in (select DISTINCT ORDEM, SÓCIO_MAT,órgão_nome,ÓRGÃO_CARGO,ÓRGÃO_GESTÃO_INI from sbdb.órgão_membro where órgão_nome = Orgao AND ÓRGÃO_CARGO = iposto AND ÓRGÃO_GESTÃO_INI = Gestao GROUP BY ORDEM, SÓCIO_MAT,órgão_nome,ÓRGÃO_CARGO,ÓRGÃO_GESTÃO_INI ORDER BY ORDEM) Loop
+
+    UPDATE SBDB.ÓRGÃO_MEMBRO SET ORDEM = nLoop, sys_status = 'X'  where sócio_mat = Cur_D.SÓCIO_MAT AND Órgão_Cargo = Cur_D.ÓRGÃO_CARGO AND ÓRGÃO_GESTÃO_INI = Cur_D.ÓRGÃO_GESTÃO_INI;
+
+    nLoop := nLoop + 1;
+
+  End Loop;
+
+  COMMIT;
+
+EXCEPTION
+  when others then
+    raise_application_error(-20000, 'Erro ao Transferir Delegado - ' || SQLERRM);
+    SENDMAIL('WEB@xxxxxxx.org.br','andre.vieira@xxxxxxx.com.br','Log SBD - Erro ao Transferir Delegado',SQLERRM);
+    ROLLBACK;
+end TransfereMembros;
+
+end RSBD;

@@ -1,0 +1,34 @@
+
+ESQUEMA: CNTA
+ARQUIVO: [esquema].SQL
+-------------------------------------------------------------------------------------
+-- CRIAÇÃO DE SCRIPT PARA GERAR ESTRUTURA BÁSICA [esquema]
+-------------------------------------------------------------------------------------
+ALTER TABLESPACE T_[esquema]_DAT OFFLINE;
+DROP TABLESPACE T_[esquema]_DAT INCLUDING CONTENTS;
+
+CREATE TABLESPACE T_[esquema]_DAT DATAFILE 'D:\ORACLE\ORADATA\[esquema]\CIEX.DBF' SIZE 50M REUSE
+AUTOEXTEND ON NEXT 50M MAXSIZE UNLIMITED EXTENT MANAGEMENT LOCAL;
+
+<<cria estrutura de tabelas>>
+<<cria relacionamentos>>
+<<cria triggers>>
+<<cria usuários>>
+
+.TÉRMINO
+
+<<cria chaves primárias>>
+<<cria relacionamentos>>
+<<cria triggers>>
+
+.TÉRMINO
+
+
+ESQUEMA: ÚNICO
+ARQUIVO: TRANSF.PAR
+ROWS=Y
+COMPRESS=Y
+TABLES=(
+<<tabelas para envio e recebimento de transferência>>
+)
+.TÉRMINO

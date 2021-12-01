@@ -1,0 +1,168 @@
+ESQUEMA: CXSP;CXBH
+ARQUIVO: COMPARA_CXRJ_[esquema].SQL
+-------------------------------------------------------------------------------------
+-- COMPARAÇÃO DO CXRJ COM O [esquema]
+-------------------------------------------------------------------------------------
+
+create or replace package dbms_compara_CXRJ_[esquema] is
+	procedure COMPARA;
+	function momento(cria in date, atualiza in date) return date;
+	function maisatual(cria1 in date, atualiza1 in date, cria2 in date, atualiza2 in date) return varchar2;	
+
+	PRAGMA RESTRICT_REFERENCES(momento, WNDS, WNPS);
+	PRAGMA RESTRICT_REFERENCES(maisatual, WNDS, WNPS);
+end;
+/
+
+create or replace package body dbms_compara_CXRJ_[esquema] is
+
+
+
+function momento(cria in date, atualiza in date) return date is
+begin
+	if cria is null then
+		return atualiza;
+	elsif atualiza is null then
+		return cria;
+	else
+		if atualiza >= cria then
+			return atualiza;
+		else
+			return cria;
+		end if;
+	end if;	
+end;
+
+
+function maisatual(cria1 in date, atualiza1 in date, cria2 in date, atualiza2 in date) return varchar2 is
+begin
+	if momento(cria1, atualiza1) > momento(cria2, atualiza2) then
+		return 'mais novo CXRJ';
+	elsif momento(cria1, atualiza1) < momento(cria2, atualiza2) then
+		return 'mais novo [esquema]';
+	else
+		return 'mesma data';
+	end if;
+end;
+
+
+procedure COMPARA is
+reglog utl_file.file_type;
+prim boolean;
+
+begin
+	begin
+		reglog := utl_file.fopen('D:\ORACLE\PUBLIC', 'RESULT_CXRJ_[esquema].TXT', 'w');
+	exception
+		when others then
+			raise_application_error ( -20000, 'erro ao tentar abrir o arquivo de resultado -> ' || SQLERRM);
+	end;			
+
+	<<insere comparações de cada tabela>>
+	-- [tabela] QUE TEM NO CXRJ e NÃO TEM NO [esquema]
+	declare
+		cursor EN is select [chave_rj] chk from CXRJ.[tabela] RJ, [esquema].[tabela]@[esquema] REL where [chave_comp] and [chave_rj_and_rel_m] and [chave_rel_is_null];
+	begin
+		prim := true;
+		for cur in EN loop
+			if prim then
+				utl_file.new_line(reglog);
+				utL_file.put_line(reglog, '=====> [tabela] QUE TEM NO CXRJ e NÃO TEM NO [esquema] <=====');
+				prim := false;
+			end if;
+			utl_file.put_line(reglog, cur.chk);	
+		end loop;
+	exception
+		when others then
+			raise_application_error ( -20000, 'erro durante verif [tabela] que tem no CXRJ e não tem no [esquema] -> ' || SQLERRM );
+	end;
+
+	-- [tabela] QUE TEM NO [esquema] e NÃO TEM NO CXRJ 
+	declare
+		cursor EN is select [chave_rel] chk from [esquema].[tabela]@[esquema] REL, CXRJ.[tabela] RJ where [chave_rel_and_rj_m] and [chave_rj_is_null];
+	begin
+		prim := true;
+		for cur in EN loop
+			if prim then
+				utl_file.new_line(reglog);
+				utL_file.put_line(reglog, '=====> [tabela] QUE TEM NO [esquema] e NÃO TEM NO CXRJ <=====');
+				prim := false;
+			end if;
+			utl_file.put_line(reglog, cur.chk);	
+		end loop;
+	exception
+		when others then
+			raise_application_error ( -20000, 'erro durante verif [tabela] que tem no CXRJ e não tem no [esquema] -> ' || SQLERRM );
+	end;
+
+	-- [tabela] QUE TEM NOS DOIS COM CAMPOS DIFERENTES
+	declare
+		cursor EN is select maisatual(RJ.SYS_MOMENTO_CRIA, RJ.SYS_MOMENTO_ATUALIZA, REL.SYS_MOMENTO_CRIA, REL.SYS_MOMENTO_ATUALIZA) || ' -> ' || [chave_rj] || ' -> ' || [mostra_campos_dif] chk from CXRJ.[tabela] RJ, [esquema].[tabela]@[esquema] REL where [chave_comp] and [chave_rj_and_rel] and ([campos_dif]);
+	begin
+
+		prim := true;		
+		for cur in EN loop
+			if prim then
+				utl_file.new_line(reglog);
+				utL_file.put_line(reglog, '=====> [tabela] QUE TEM NOS DOIS COM CAMPOS DIFERENTES <=====');
+				prim := false;
+			end if;
+			utl_file.put_line(reglog, cur.chk);	
+		end loop;
+	exception
+		when others then
+			raise_application_error ( -20000, 'erro durante verif [tabela] que tem no CXRJ e não tem no [esquema] -> ' || SQLERRM );
+	end;
+
+
+	.TÉRMINO
+	utl_file.fclose(reglog);
+exception
+	when others then
+		if utl_file.is_open(reglog) then
+			utl_file.fclose(reglog);
+		end if;
+		raise_application_error ( -20000, 'erro COMPARA CXRJ com [esquema] -> ' || SQLERRM );
+end;
+
+end;
+
+/
+
+.TÉRMINO
+
+
+
+
+
+ESQUEMA: ÚNICO
+ARQUIVO: RECEB.PAR
+IGNORE=Y
+FULL=N
+ROWS=Y
+TABLES=(
+<<tabelas para envio e recebimento de transferência>>
+)
+.TÉRMINO
+
+
+
+ESQUEMA: ÚNICO
+ARQUIVO: TODAS_TABELAS.PAR
+FULL=N
+ROWS=Y
+TABLES=(
+<<tabelas para envio e recebimento de transferência full>>
+)
+.TÉRMINO
+
+
+
+ESQUEMA: ÚNICO
+ARQUIVO: TRANSF.PAR
+ROWS=Y
+COMPRESS=Y
+TABLES=(
+<<tabelas para envio e recebimento de transferência>>
+)
+.TÉRMINO

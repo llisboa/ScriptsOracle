@@ -1,0 +1,10 @@
+EXEC LSBD.LCria_Job('ATUAL_OBRIG_STATUS','LSBD.LAtualiza_Obrig_Status','00:00:00','24');
+EXEC LSBD.LCria_Job('ATUAL_SÓCIO_STATUS','LSBD.LAtualiza_Socio_Status','00:30:00','24');
+EXEC LSBD.LCria_Job('ATUAL_CATEGORIA','LSBD.LAltera_Categoria','01:00:00','24');
+EXEC LSBD.LCria_Job('ATUAL_EXCLUIR_PARCELA','LSBD.LExclui_Parcelas','01:30:00','24');
+EXEC LSBD.LCria_Job('ATUAL_Delegados','RSBD.AtualizaDelegados','02:00:00','24');
+EXEC LSBD.LCria_Job('ATUAL_Inicio_COntagem','RSBD.EMCDIncioContagem','02:30:00','24');
+EXEC LSBD.LCria_Job('ATUAL_Apuracao','RSBD.EMCDApuracao','03:00:00','24');
+EXEC LSBD.LCria_Job('ATUAL_AnaisEndereco','RSBD.AnaisEnderecos','03:30:00','24');
+EXEC LSBD.LCria_Job('ATUAL_Assinatura','RSBD.AssStatus','04:00:00','24');
+EXEC LSBD.LCria_Job('ATUAL_SOCIO_LICENCA','LSBD.PROC_HIST_LICEN_ATUALIZA','04:30:00','24');
